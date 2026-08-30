@@ -86,6 +86,13 @@ delivery confirmation is ever needed, a natural extension is
 `CMD|ACK|<original>` echoed back by firmware — not implemented here since no
 firmware currently sends it.
 
+**Note on the REST-level `force` override (§5.1):** the UDP dictionary
+itself is unchanged — there is no `FORCE_KICK`/`FORCE_EMP` wire message.
+Forcing happens entirely server-side, at the REST layer, before the normal
+`CMD|KICK_FIRE` / `CMD|POWER_CUT` dispatch: the eligibility gate is skipped,
+but the wire message sent to the ESP32 is identical to a normal, validated
+fire. Firmware doesn't need to know or care that a given command was forced.
+
 ## 4. State models
 
 ```ts
@@ -130,6 +137,16 @@ timeRemainingMs <= 45000 && scoreRed === scoreBlue` — recomputed on every
 tick, goal, and manual time adjustment, not just once a second, so a referee
 override reflects instantly rather than up to 1s later.
 
+**Score correction is intentionally one level of undo, not a free
+decrement.** `POST /api/match/undo` reverses only the single most recent
+goal (see §5) — it is not team-scoped and there is no endpoint to arbitrarily
+subtract from a team's score at any point in the match. A referee UI that
+wants a "-1" button per team should label and wire it as "undo last goal"
+rather than implying it can decrement either team's score on demand; if
+free-form per-team decrement is actually needed, that's a deliberate scope
+change to `state/matchState.ts` (a new `scoreRed`/`scoreBlue`-targeted
+adjustment, distinct from the goal-ledger `undo`), not a client-side detail.
+
 ## 5. HTTP + WebSocket API
 
 All REST bodies are JSON, validated with `zod` (bad input → `400`, never a
@@ -154,9 +171,9 @@ messages the dashboard's Web Audio synth reacts to.
 | `POST /api/match/reset` | Abandon match, zero everything |
 | `POST /api/match/time` `{deltaMs}` | Referee ±1M (or any delta) |
 | `POST /api/match/goal` `{team}` | Register a goal |
-| `POST /api/match/undo` | Reverse the most recent goal (single-level) |
-| `POST /api/powerups/kick` `{mac}` | Trigger the same validated path as `EVENT\|KICK_REQ` (referee override / no-hardware testing) |
-| `POST /api/powerups/emp` `{mac, targetTeam}` | Same, for EMP |
+| `POST /api/match/undo` | Reverse the most recent goal (single-level, not team-scoped — see §4) |
+| `POST /api/powerups/kick` `{mac, force?}` | Trigger the same validated path as `EVENT\|KICK_REQ` (referee override / no-hardware testing). `force: true` bypasses cooldown/pairing/online checks — see §5.1 |
+| `POST /api/powerups/emp` `{mac, targetTeam, force?}` | Same, for EMP. `force: true` bypasses eligibility/target-online/already-frozen checks — see §5.1 |
 | `GET /auth/spotify/login` / `GET /auth/spotify/callback` | Spotify OAuth (no-op if unconfigured) |
 
 WebSocket event shapes (`src/types.ts::ServerEvent`):
@@ -169,6 +186,36 @@ WebSocket event shapes (`src/types.ts::ServerEvent`):
 { type: 'powerup_rejected'; action: 'kick'|'emp'; mac: string; reason: string }
 { type: 'history'; entries: MatchHistoryEntry[] }
 ```
+
+### 5.1 Powerup `force` override (Admin test mode)
+
+The Admin/setup page needs to test-fire a kicker or EMP on real hardware
+without meeting the normal game-rule criteria (off cooldown, paired, target
+online, EMP previously unlocked, not already frozen). The always-validated
+path in §6 is correct for in-match play but too strict for a pre-match
+hardware check, so `force` is a separate, narrower code path:
+
+- **What it skips:** the entire `evaluateKick`/`evaluateEmp` eligibility
+  gate — cooldown, pairing, online, EMP-ready, already-frozen. A forced call
+  goes straight to the UDP dispatch (`CMD|KICK_FIRE` / `CMD|POWER_CUT`,
+  still sent twice per the existing retry behavior).
+- **What it still does:** applies the normal bookkeeping side effects
+  (`kickerCooldownUntil`, `powerCutUntil`) exactly as a real fire would.
+  This is deliberate — it keeps the dashboard's displayed state consistent
+  with what the hardware just did, and stops a referee from spamming the
+  physical servo/MOSFET by holding the test button. It does *not* touch
+  `powerupEmpReady`, since forced EMP doesn't consume a real, rule-unlocked
+  charge.
+- **What it doesn't skip:** input validation (`zod`) and the target MAC
+  actually existing in the registry — `force` bypasses game rules, not
+  basic request sanity.
+- **Safety gate:** `force: true` is only honored when `match.matchActive
+  === false`. If a match is running, a forced request is rejected with
+  `400` regardless of the flag — this is a pre-match/setup tool, not a way
+  to override live gameplay rules mid-match.
+- **Visibility:** a forced fire still emits the normal `audio_event` /
+  `light_event` pair, so the Admin test button gets the same on-screen and
+  on-arena confirmation a real trigger would.
 
 ## 6. Sequence walkthroughs
 
@@ -185,6 +232,11 @@ Server:                   evaluateKick(controller, pairedTruck, now)
              Truck:            actuate servo 0° → 90° → 0°
              Server → WS:      audio_event { event: 'kick_fired' }
 ```
+
+`POST /api/powerups/kick {mac, force: true}` (pre-match only, §5.1) enters
+at the same point but skips straight past `evaluateKick` to the
+`kickerCooldownUntil` set + `CMD|KICK_FIRE` dispatch — the rest of the
+sequence (retry send, `audio_event`) is identical.
 
 ### Opponent EMP power-cut (PRD §3.2)
 
@@ -204,6 +256,11 @@ Server:                   evaluateEmp(controller, targetController, now)
              Server → WS:      audio_event {'emp_fired'}, light_event {'EMP_FLASH'}
              Server → Lighting: UDP CMD|LIGHT_FX|EMP_FLASH
 ```
+
+`POST /api/powerups/emp {mac, targetTeam, force: true}` (pre-match only,
+§5.1) skips `evaluateEmp` and the `powerupEmpReady` consumption (there's no
+real charge to consume), but still sets `powerCutUntil` and dispatches
+`CMD|POWER_CUT|3000` identically.
 
 ## 7. Fault tolerance: ESP32 restarts
 
@@ -270,7 +327,7 @@ src/
   state/matchState.ts      score/clock/intense-mode/EMP-eligibility, 1s tick
   net/messages.ts          UDP dictionary parse/encode (total, never throws)
   net/udp.ts               dgram socket, discovery, dispatch, retry-send
-  game/powerups.ts         pure kick/EMP eligibility rules (unit tested)
+  game/powerups.ts         pure kick/EMP eligibility rules (unit tested) + force-override path (§5.1)
   game/ambiance.ts         goal/intense/EMP/match-end → audio+light event mapping
   audio/spotify.ts         OAuth + duck/resume/play, safe no-op if unconfigured
   http/server.ts           Express app, static dashboard, route mounting
