@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { MatchStateManager, computeEmpEligibility, computeIntenseMode } from "../src/state/matchState.js";
+import { SettingsRegistry } from "../src/state/settingsRegistry.js";
 import type { MatchState } from "../src/types.js";
 
 function baseState(overrides: Partial<MatchState> = {}): MatchState {
@@ -74,7 +75,8 @@ describe("MatchStateManager", () => {
       onMatchEnd: vi.fn(),
       onChange: vi.fn(),
     };
-    const manager = new MatchStateManager(events);
+    const settings = new SettingsRegistry();
+    const manager = new MatchStateManager(events, settings);
     return { manager, events };
   }
 

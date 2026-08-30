@@ -30,7 +30,7 @@ import {
 
 import {
   encodeKickFire,
-  encodePowerCut,
+  encodeMotorCut,
   encodeLightFx,
 } from "./net/messages.js";
 
@@ -231,7 +231,10 @@ export class Engine {
     const controller =
       this.registry.get(controllerMac);
 
-    const target =
+    // Find the opponent team's controller, then their paired truck.
+    // The EMP now targets the truck's motor driver (CMD|MOTOR_CUT),
+    // not the controller's MOSFET (old CMD|POWER_CUT).
+    const targetController =
       this.registry
         .list()
         .find(
@@ -240,9 +243,14 @@ export class Engine {
             d.team === targetTeam,
         );
 
+    const targetTruck =
+      targetController?.pairedMac
+        ? this.registry.get(targetController.pairedMac)
+        : undefined;
+
     const result = evaluateEmp(
       controller,
-      target,
+      targetTruck,
       Date.now(),
     );
 
@@ -263,6 +271,7 @@ export class Engine {
       return;
     }
 
+    // Consume the EMP charge on the attacking controller.
     this.registry.setEmpReady(
       controllerMac,
       false,
@@ -271,32 +280,31 @@ export class Engine {
     const until =
       Date.now() + config.empDurationMs;
 
-    this.registry.setPowerCutUntil(
-      result.targetMac,
+    // Track the motor-cut window on the truck (not the controller).
+    this.registry.setMotorCutUntil(
+      result.targetTruckMac,
       until,
     );
 
-    const targetDevice =
-      this.registry.get(result.targetMac);
+    // Send CMD|MOTOR_CUT to the truck's motor driver ESP32.
+    const targetTruckDevice =
+      this.registry.get(result.targetTruckMac);
 
-    if (targetDevice) {
+    if (targetTruckDevice) {
       this.udp.sendWithRetry(
-        targetDevice.ip,
-        encodePowerCut(
-          config.empDurationMs,
-        ),
+        targetTruckDevice.ip,
+        encodeMotorCut(config.empDurationMs),
       );
     }
 
+    // Clear the motor-cut flag after the duration expires.
     setTimeout(() => {
       const dev =
-        this.registry.get(result.targetMac);
+        this.registry.get(result.targetTruckMac);
 
-      if (
-        dev?.powerCutUntil === until
-      ) {
-        this.registry.setPowerCutUntil(
-          result.targetMac,
+      if (dev?.motorCutUntil === until) {
+        this.registry.setMotorCutUntil(
+          result.targetTruckMac,
           null,
         );
       }

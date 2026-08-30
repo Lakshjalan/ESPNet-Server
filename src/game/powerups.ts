@@ -24,22 +24,30 @@ export function evaluateKick(
 export type EmpRejectReason =
   | "unknown_controller"
   | "not_eligible"
-  | "no_target"
+  | "no_target_truck"
   | "target_already_frozen"
   | "target_offline";
-export type EmpResult = { ok: true; targetMac: string } | { ok: false; reason: EmpRejectReason };
+export type EmpResult = { ok: true; targetTruckMac: string } | { ok: false; reason: EmpRejectReason };
 
+/**
+ * Evaluates whether an EMP can fire.
+ * `controller`   — the device that pressed the EMP button
+ * `targetTruck`  — the opponent team's paired truck (motor driver target)
+ *
+ * The EMP is now sent to the truck's motor driver (CMD|MOTOR_CUT), not to
+ * the controller's MOSFET. The truck must be online and not already motor-cut.
+ */
 export function evaluateEmp(
   controller: DeviceNode | undefined,
-  target: DeviceNode | undefined,
+  targetTruck: DeviceNode | undefined,
   now: number,
 ): EmpResult {
   if (!controller) return { ok: false, reason: "unknown_controller" };
   if (!controller.powerupEmpReady) return { ok: false, reason: "not_eligible" };
-  if (!target) return { ok: false, reason: "no_target" };
-  if (!target.isOnline) return { ok: false, reason: "target_offline" };
-  if (target.powerCutUntil !== null && now < target.powerCutUntil) {
+  if (!targetTruck) return { ok: false, reason: "no_target_truck" };
+  if (!targetTruck.isOnline) return { ok: false, reason: "target_offline" };
+  if (targetTruck.motorCutUntil !== null && now < targetTruck.motorCutUntil) {
     return { ok: false, reason: "target_already_frozen" };
   }
-  return { ok: true, targetMac: target.mac };
+  return { ok: true, targetTruckMac: targetTruck.mac };
 }

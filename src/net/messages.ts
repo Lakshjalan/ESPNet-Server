@@ -87,7 +87,7 @@ export function parseInbound(raw: string): InboundMessage {
 
 export const encodeServerOnline = (): string => "ESPNet-Server-Online";
 export const encodeKickFire = (): string => "CMD|KICK_FIRE";
-export const encodePowerCut = (ms: number): string => `CMD|POWER_CUT|${ms}`;
+export const encodeMotorCut = (ms: number): string => `CMD|MOTOR_CUT|${ms}`;
 export const encodeSetLed = (state: "ON" | "OFF" | "BLINK"): string => `CMD|SET_LED|${state}`;
 export const encodeLightFx = (pattern: string, rgbHex?: string): string =>
   rgbHex ? `CMD|LIGHT_FX|${pattern}|${rgbHex}` : `CMD|LIGHT_FX|${pattern}`;

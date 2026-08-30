@@ -23,8 +23,8 @@ export interface DeviceNode {
   kickerCooldownUntil: number | null;
   /** Unlocked by match rules (2 consecutive goals or trailing by 2); consumed on use. */
   powerupEmpReady: boolean;
-  /** Set while this controller's remote power is cut by an opponent's EMP. */
-  powerCutUntil: number | null;
+  /** Set while this truck's motor driver is cut by an opponent's EMP. */
+  motorCutUntil: number | null;
 }
 
 export type MatchWinner = "red" | "blue" | "draw" | null;

@@ -95,7 +95,7 @@ export class DeviceRegistry {
         label: null,
         kickerCooldownUntil: null,
         powerupEmpReady: false,
-        powerCutUntil: null,
+        motorCutUntil: null,
       };
       this.devices.set(input.mac, fresh);
     }
@@ -187,10 +187,10 @@ export class DeviceRegistry {
     this.notify();
   }
 
-  setPowerCutUntil(mac: string, until: number | null): void {
+  setMotorCutUntil(mac: string, until: number | null): void {
     const dev = this.devices.get(mac);
     if (!dev) return;
-    dev.powerCutUntil = until;
+    dev.motorCutUntil = until;
     this.notify();
   }
 
