@@ -6,9 +6,16 @@ import type { ServerEvent } from "../types.js";
 export class WsHub {
   private wss: WebSocketServer;
 
-  constructor(httpServer: HttpServer) {
+  constructor(httpServer: HttpServer, onConnection?: (socket: WebSocket) => void) {
     this.wss = new WebSocketServer({ server: httpServer, path: "/ws" });
     this.wss.on("connection", (socket) => {
+      if (onConnection) {
+        try {
+          onConnection(socket);
+        } catch (e) {
+          console.error("[ws] error in onConnection handler:", e);
+        }
+      }
       socket.on("message", (raw) => {
         if (raw.toString() === "ping") socket.send("pong");
       });

@@ -125,7 +125,6 @@ function renderFleet(devices) {
   const onlineCount = devices.filter(d => d.isOnline).length;
   const connDevices = document.getElementById('connDevices');
   if (connDevices) connDevices.textContent = `${onlineCount}/${devices.length} devices`;
-  setConnStatus(onlineCount > 0 ? 'Arena online' : 'No devices online', onlineCount > 0);
 }
 
 function renderPairing(devices) {

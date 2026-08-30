@@ -136,7 +136,15 @@ export class Engine {
     // WebSocket
     // -----------------------------------------------------------------------
 
-    this.ws = new WsHub(httpServer);
+    this.ws = new WsHub(httpServer, (socket) => {
+      socket.send(
+        JSON.stringify({
+          type: "state",
+          devices: this.registry.list(),
+          match: this.match.get(),
+        })
+      );
+    });
 
     // -----------------------------------------------------------------------
     // Offline device sweep

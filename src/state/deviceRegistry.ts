@@ -72,7 +72,10 @@ export class DeviceRegistry {
     if (existing) {
       existing.ip = input.ip;
       existing.lastSeen = now;
-      existing.isOnline = true;
+      if (!existing.isOnline) {
+        existing.isOnline = true;
+        console.log(`[registry] Device ${existing.mac} (${existing.label || existing.nodeType || "unknown"}) is now ONLINE`);
+      }
       if (input.batteryPct !== null) existing.batteryPct = input.batteryPct;
       // Seed-only: never clobber a referee-assigned value.
       if (existing.nodeType === null && input.nodeType !== null) {
@@ -98,6 +101,7 @@ export class DeviceRegistry {
         motorCutUntil: null,
       };
       this.devices.set(input.mac, fresh);
+      console.log(`[registry] Registered new device: MAC=${fresh.mac} IP=${fresh.ip} Type=${fresh.nodeType || "unknown"} Team=${fresh.team || "unassigned"}`);
     }
     this.notify();
   }
@@ -109,6 +113,7 @@ export class DeviceRegistry {
     for (const dev of this.devices.values()) {
       if (dev.isOnline && now - dev.lastSeen > config.offlineThresholdMs) {
         dev.isOnline = false;
+        console.log(`[registry] Device ${dev.mac} (${dev.label || dev.nodeType || "unknown"}) is now OFFLINE`);
         changed = true;
       }
     }
