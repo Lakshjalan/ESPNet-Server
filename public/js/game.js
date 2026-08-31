@@ -85,15 +85,42 @@ function refTriggerEmp(side) {
 
 async function bootstrapFromBackend() {
   try {
-    const p = await api.getPlayers().catch(() => []);
-    players = Array.isArray(p) ? p : [];
-    renderPlayers();
-  } catch (err) { console.error('Failed to load players:', err); }
-  try {
-    const q = await api.getQueue().catch(() => []);
-    matchQueue = Array.isArray(q) ? q : (q?.queue ?? []);
-    renderQueue();
-  } catch (err) { console.error('Failed to load queue:', err); }
+    // 1. Fetch devices immediately
+    try {
+      const d = await api.getDevices();
+      // Unpack the array whether it comes directly or wrapped in { devices: [...] }
+      const deviceList = Array.isArray(d) ? d : (d?.devices || []);
+      
+      latestDevices = deviceList;
+      renderFleet(latestDevices);
+      renderPairing(latestDevices);
+      refreshPowerupPills(latestDevices);
+      
+    } catch (err) {
+      console.error("Failed to load devices:", err);
+    }
+
+    try {
+      const p = await api.getPlayers();
+      players = Array.isArray(p) ? p : (p?.players || []);
+      renderPlayers();
+    } catch (err) {
+      console.error("Failed to load players:", err);
+      players = [];
+    }
+
+    try {
+      const q = await api.getQueue();
+      matchQueue = Array.isArray(q) ? q : (q?.queue || []);
+      renderQueue();
+    } catch (err) {
+      console.error("Failed to load queue:", err);
+      matchQueue = [];
+      renderQueue();
+    }
+  } catch (err) {
+    console.error("Backend bootstrap failed:", err);
+  }
 }
 
 function refStart() {
@@ -270,6 +297,195 @@ function startQueueMatch(id) {
   const blueP = players.find(p => String(p.id) === String(blueId));
   if (!redP?.available || !blueP?.available) { renderQueue(); return; }
   api.startQueueMatch(id)
-    .then(() => { matchQueue = matchQueue.filter(q => String(q.id) !== String(id)); renderQueue(); applyMatch(redP.id, blueP.id); })
-    .catch(err => console.error('Failed to start queued match:', err));
+    .then(() => {
+      matchQueue = matchQueue.filter(q => String(q.id) !== String(id));
+      renderQueue();
+      applyMatch(redP.id, blueP.id);
+    })
+    .catch(err => {
+      console.log("Failed to start queued match:", err);
+    });
+}
+
+function refreshHistoryOnMatchEnd() {
+  api.getMatchHistory().then(h => { if (Array.isArray(h)) { matchHistory = h; renderHistory(); } }).catch(() => {});
+}
+
+function normalizeHistoryEntry(m, i) {
+  return {
+    id: m.matchId ?? m.id ?? i,
+    redName: m.playerRedName ?? m.redName ?? 'Red',
+    blueName: m.playerBlueName ?? m.blueName ?? 'Blue',
+    redScore: m.scoreRed ?? m.redScore ?? 0,
+    blueScore: m.scoreBlue ?? m.blueScore ?? 0,
+    winner: m.winner ?? null,
+    when: m.endedAt ? new Date(m.endedAt).toLocaleString() : (m.date ?? ''),
+  };
+}
+
+function renderHistory() {
+  const box = document.getElementById('historyList');
+  if (!box) return;
+
+  const deleteButton = `
+    <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
+      <button class="btn danger" onclick="deleteAllMatchHistory()">✕ DELETE HISTORY</button>
+    </div>
+  `;
+
+  if (!matchHistory.length) {
+    box.innerHTML = deleteButton + emptyState('No completed matches yet.');
+    return;
+  }
+
+  box.innerHTML = deleteButton + matchHistory.map((raw, i) => {
+    const m = normalizeHistoryEntry(raw, i);
+    return `
+      <div class="match-card">
+        <div class="side red">
+          <div class="tn">Red</div>
+          <div>${m.redName}</div>
+          <div class="sc">${String(m.redScore).padStart(2, '0')}</div>
+        </div>
+        <div class="mid">
+          Match ${m.id}<br>
+          ${m.when}<br>
+          <span class="winner">
+            ${m.winner === 'draw' ? 'Draw' : 'Winner: ' + (m.winner === 'red' ? 'Red' : 'Blue')}
+          </span>
+          <br>
+          <button class="btn small danger" onclick="deleteHistoryEntry('${raw.matchId}')" style="margin-top:10px;">✕ Delete</button>
+        </div>
+        <div class="side blue">
+          <div class="tn">Blue</div>
+          <div>${m.blueName}</div>
+          <div class="sc">${String(m.blueScore).padStart(2, '0')}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function deleteAllMatchHistory() {
+  const confirmed = confirm("Are you sure you want to delete ALL match history?");
+  if (!confirmed) return;
+
+  try {
+    console.log("[history] deleting all match history...");
+    const response = await api.deleteMatchHistory();
+    console.log("[history] deleted successfully:", response);
+    matchHistory = [];
+    renderHistory();
+    alert("Match history deleted successfully.");
+  } catch (error) {
+    console.error("[history] delete failed:", error);
+    alert("Failed to delete match history. Check the server.");
+  }
+}
+
+async function deleteHistoryEntry(matchId) {
+  const confirmed = confirm("Are you sure you want to delete this match history?");
+  if (!confirmed) return;
+
+  try {
+    console.log("[history] deleting entry:", matchId);
+    const response = await api.deleteHistoryEntry(matchId);
+    console.log("[history] entry deleted successfully:", response);
+    matchHistory = matchHistory.filter(entry => entry.matchId !== matchId);
+    renderHistory();
+  } catch (error) {
+    console.error("[history] individual delete failed:", error);
+    alert("Failed to delete this match history.");
+  }
+}
+
+function collectSettingsPayload() {
+  const s = document.getElementById('screen-settings');
+  if (!s) return {};
+  const nums = [...s.querySelectorAll('input[type="number"]')].map(i => Number(i.value));
+  const selects = [...s.querySelectorAll('select')].map(sel => sel.value);
+  const toggles = [...s.querySelectorAll('.switch')].map(sw => sw.classList.contains('on'));
+  const range = s.querySelector('input[type="range"]');
+  return {
+    matchDurationMin: nums[0], intenseModeTriggerSec: nums[1], goalLimit: nums[2],
+    kickerCooldownSec: nums[3], empCooldownSec: nums[4],
+    winCondition: selects[0], lightingMode: selects[1],
+    suddenDeathOnTie: toggles[0], autoPauseOnDisconnect: toggles[1],
+    kickerEnabled: toggles[2], empEnabled: toggles[3],
+    confettiOnGoal: toggles[4], arenaShakeOnGoal: toggles[5], ledSweepInIntense: toggles[6],
+    goalSound: toggles[7], intenseModeMusic: toggles[8], matchEndMusic: toggles[9],
+    masterVolume: range ? Number(range.value) : undefined,
+  };
+}
+
+async function loadSettingsFromBackend() {
+  try {
+    const response = await api.getSettings();
+    const settings = response?.settings ?? response;
+    if (!settings) {
+      throw new Error("Settings not received from backend");
+    }
+    const screen = document.getElementById("screen-settings");
+    if (!screen) return;
+
+    const nums = [...screen.querySelectorAll('input[type="number"]')];
+    if (nums[0]) nums[0].value = settings.matchDurationMin;
+    if (nums[1]) nums[1].value = settings.intenseModeTriggerSec;
+    if (nums[2]) nums[2].value = settings.goalLimit;
+    if (nums[3]) nums[3].value = settings.kickerCooldownSec;
+    if (nums[4]) nums[4].value = settings.empCooldownSec;
+
+    const selects = [...screen.querySelectorAll("select")];
+    if (selects[0]) selects[0].value = settings.winCondition;
+    if (selects[1]) selects[1].value = settings.lightingMode;
+
+    const values = [
+      settings.suddenDeathOnTie,
+      settings.autoPauseOnDisconnect,
+      settings.kickerEnabled,
+      settings.empEnabled,
+      settings.confettiOnGoal,
+      settings.arenaShakeOnGoal,
+      settings.ledSweepInIntense,
+      settings.goalSound,
+      settings.intenseModeMusic,
+      settings.matchEndMusic,
+    ];
+    const switches = [...screen.querySelectorAll(".switch")];
+    switches.forEach((sw, index) => {
+      sw.classList.toggle("on", Boolean(values[index]));
+    });
+
+    const range = screen.querySelector('input[type="range"]');
+    if (range && settings.masterVolume !== undefined) {
+      range.value = settings.masterVolume;
+    }
+    console.log("[settings] loaded from backend", settings);
+  } catch (error) {
+    console.error("[settings] failed to load:", error);
+  }
+}
+
+async function saveSettingsToBackend() {
+  try {
+    const payload = collectSettingsPayload();
+    console.log("[settings] saving:", payload);
+    const response = await api.saveSettings(payload);
+    const settings = response?.settings ?? response;
+    console.log("[settings] saved successfully:", settings);
+    alert("Settings saved successfully.");
+  } catch (error) {
+    console.error("[settings] save failed:", error);
+    alert("Failed to save settings. Check the server.");
+  }
+}
+
+function setupSettingsBackend() {
+  const screen = document.getElementById("screen-settings");
+  if (!screen) return;
+  const saveButton = screen.querySelector("button");
+  if (!saveButton) return;
+  if (saveButton.textContent.trim().toLowerCase().includes("save settings")) {
+    saveButton.addEventListener("click", saveSettingsToBackend);
+  }
 }

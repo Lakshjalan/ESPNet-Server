@@ -103,10 +103,13 @@ function renderFleet(devices) {
   const controllersEl = document.getElementById('fleetControllers');
   const trucksEl = document.getElementById('fleetTrucks');
   const lightingEl = document.getElementById('fleetLighting');
+  const unassignedEl = document.getElementById('fleetUnassigned');
+  
   if (!devices || !devices.length) {
     if (controllersEl) controllersEl.innerHTML = emptyState('No controllers have connected yet.');
     if (trucksEl) trucksEl.innerHTML = emptyState('No trucks have connected yet.');
     if (lightingEl) lightingEl.innerHTML = emptyState('No lighting rig has connected yet.');
+    if (unassignedEl) unassignedEl.innerHTML = emptyState('No unassigned devices have connected yet.');
     const connDevices = document.getElementById('connDevices');
     if (connDevices) connDevices.textContent = '—';
     return;
@@ -119,9 +122,12 @@ function renderFleet(devices) {
   const controllers = devices.filter(d => d.nodeType === 'controller');
   const trucks = devices.filter(d => d.nodeType === 'truck');
   const lighting = devices.filter(d => d.nodeType === 'lighting');
+  const unassigned = devices.filter(d => !d.nodeType);
+  
   if (controllersEl) controllersEl.innerHTML = controllers.map(row).join('') || emptyState('No controllers have connected yet.');
   if (trucksEl) trucksEl.innerHTML = trucks.map(row).join('') || emptyState('No trucks have connected yet.');
   if (lightingEl) lightingEl.innerHTML = lighting.map(row).join('') || emptyState('No lighting rig has connected yet.');
+  if (unassignedEl) unassignedEl.innerHTML = unassigned.map(row).join('') || emptyState('No unassigned devices have connected yet.');
   const onlineCount = devices.filter(d => d.isOnline).length;
   const connDevices = document.getElementById('connDevices');
   if (connDevices) connDevices.textContent = `${onlineCount}/${devices.length} devices`;
@@ -216,4 +222,34 @@ function renderPlayers() {
 
 function toggleSwitch(el) { 
   if (el) el.classList.toggle('on'); 
+}
+
+function renderQueue() {
+  const listEl = document.getElementById('queueList');
+  const emptyEl = document.getElementById('queueEmpty');
+  if (!listEl || !emptyEl) return;
+  if (!matchQueue || matchQueue.length === 0) {
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  listEl.innerHTML = matchQueue.map(q => {
+    const redId = q.playerRedId ?? q.redId;
+    const blueId = q.playerBlueId ?? q.blueId;
+    const redP = players.find(p => String(p.id) === String(redId));
+    const blueP = players.find(p => String(p.id) === String(blueId));
+    return '<div class="queue-row">' +
+      '<div class="queue-names">' +
+        '<span class="r">' + (redP ? redP.name : 'Unknown') + '</span> ' +
+        '<span class="vs">vs</span> ' +
+        '<span class="b">' + (blueP ? blueP.name : 'Unknown') + '</span>' +
+      '</div>' +
+      '<div class="queue-actions">' +
+        '<button class="btn small" onclick="startQueueMatch(\'' + q.id + '\')">Start</button>' +
+        '<button class="btn small danger" onclick="removeFromQueue(\'' + q.id + '\')">Remove</button>' +
+      '</div>' +
+      (q.issue ? '<div class="queue-warn">Warning: ' + q.issue + '</div>' : '') +
+    '</div>';
+  }).join('');
 }
