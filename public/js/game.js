@@ -122,9 +122,24 @@ function refTriggerEmp(side) {
 
 async function bootstrapFromBackend() {
   try {
+    // 1. Fetch devices immediately
+    try {
+      const d = await api.getDevices();
+      // Unpack the array whether it comes directly or wrapped in { devices: [...] }
+      const deviceList = Array.isArray(d) ? d : (d?.devices || []);
+      
+      latestDevices = deviceList;
+      renderFleet(latestDevices);
+      renderPairing(latestDevices);
+      refreshPowerupPills(latestDevices);
+      
+    } catch (err) {
+      console.error("Failed to load devices:", err);
+    }
+
     try {
       const p = await api.getPlayers();
-      players = Array.isArray(p) ? p : [];
+      players = Array.isArray(p) ? p : (p?.players || []);
       renderPlayers();
     } catch (err) {
       console.error("Failed to load players:", err);
@@ -133,13 +148,7 @@ async function bootstrapFromBackend() {
 
     try {
       const q = await api.getQueue();
-      if (Array.isArray(q)) {
-        matchQueue = q;
-      } else if (q && Array.isArray(q.queue)) {
-        matchQueue = q.queue;
-      } else {
-        matchQueue = [];
-      }
+      matchQueue = Array.isArray(q) ? q : (q?.queue || []);
       renderQueue();
     } catch (err) {
       console.error("Failed to load queue:", err);
