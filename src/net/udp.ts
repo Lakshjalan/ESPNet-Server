@@ -54,9 +54,15 @@ export class UdpFleet {
       case "discover":
         this.sendTo(rinfo.address, encodeServerOnline());
         break;
-      case "heartbeat":
+      case "heartbeat": {
+        const isNew = !this.registry.get(msg.mac);
         this.registry.upsertFromHeartbeat(msg);
+        // If the device skipped DISCOVER_SERVER and came straight in with a
+        // heartbeat, it hasn't received ESPNet-Server-Online yet — send it now
+        // so firmware transitions out of its discovery loop immediately.
+        if (isNew) this.sendTo(rinfo.address, encodeServerOnline());
         break;
+      }
       case "kick_req":
         this.handlers.onKickRequest(msg.mac);
         break;
@@ -67,6 +73,11 @@ export class UdpFleet {
         console.warn(`[udp] unrecognized packet from ${rinfo.address}: ${msg.raw.slice(0, 64)}`);
         break;
     }
+  }
+
+  /** Send CMD|SET_LED to a controller when its EMP-ready status changes. */
+  sendLedForDevice(ip: string, empReady: boolean): void {
+    this.sendTo(ip, encodeSetLed(empReady ? "ON" : "OFF"));
   }
 
   /** Unicast a command/reply to a device's ESP_PORT. Fire-and-forget (UDP has no delivery guarantee). */
