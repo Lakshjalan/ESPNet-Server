@@ -72,6 +72,8 @@ export class SettingsRegistry {
     ...DEFAULT_SETTINGS,
   };
 
+  private readonly listeners: Array<(settings: GameSettings) => void> = [];
+
   private readonly store =
     new JsonStore<GameSettings>(
       path.join(config.dataDir, "settings.json"),
@@ -85,6 +87,10 @@ export class SettingsRegistry {
       ...DEFAULT_SETTINGS,
       ...saved,
     };
+  }
+
+  onChange(listener: (settings: GameSettings) => void): void {
+    this.listeners.push(listener);
   }
 
   get(): GameSettings {
@@ -102,6 +108,10 @@ export class SettingsRegistry {
     };
 
     this.store.save(this.settings);
+
+    for (const listener of this.listeners) {
+      listener(this.get());
+    }
 
     return this.get();
   }

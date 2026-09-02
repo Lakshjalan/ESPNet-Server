@@ -4,14 +4,16 @@ import type { DeviceNode } from "../types.js";
 // Kept dependency-free (no socket, no registry) so they're trivially unit
 // testable. The stateful wrapper below is the only part that touches I/O.
 
-export type KickRejectReason = "unknown_controller" | "cooldown" | "not_paired" | "target_offline";
+export type KickRejectReason = "unknown_controller" | "cooldown" | "not_paired" | "target_offline" | "disabled";
 export type KickResult = { ok: true; truckMac: string } | { ok: false; reason: KickRejectReason };
 
 export function evaluateKick(
   controller: DeviceNode | undefined,
   truck: DeviceNode | undefined,
   now: number,
+  enabled = true,
 ): KickResult {
+  if (!enabled) return { ok: false, reason: "disabled" };
   if (!controller) return { ok: false, reason: "unknown_controller" };
   if (controller.kickerCooldownUntil !== null && now < controller.kickerCooldownUntil) {
     return { ok: false, reason: "cooldown" };
@@ -26,7 +28,8 @@ export type EmpRejectReason =
   | "not_eligible"
   | "no_target_truck"
   | "target_already_frozen"
-  | "target_offline";
+  | "target_offline"
+  | "disabled";
 export type EmpResult = { ok: true; targetTruckMac: string } | { ok: false; reason: EmpRejectReason };
 
 /**
@@ -41,7 +44,9 @@ export function evaluateEmp(
   controller: DeviceNode | undefined,
   targetTruck: DeviceNode | undefined,
   now: number,
+  enabled = true,
 ): EmpResult {
+  if (!enabled) return { ok: false, reason: "disabled" };
   if (!controller) return { ok: false, reason: "unknown_controller" };
   if (!controller.powerupEmpReady) return { ok: false, reason: "not_eligible" };
   if (!targetTruck) return { ok: false, reason: "no_target_truck" };

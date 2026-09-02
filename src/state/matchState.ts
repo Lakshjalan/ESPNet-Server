@@ -60,6 +60,17 @@ export class MatchStateManager {
     this.state = freshMatch(this.settings);
     this.history = await this.historyStore.load();
     this.tickTimer = setInterval(() => this.tick(), 1000);
+    this.settings.onChange(() => this.onSettingsChange());
+  }
+
+  private onSettingsChange(): void {
+    if (!this.state.matchActive) {
+      const matchDurationMs = this.settings.get().matchDurationMin * 60 * 1000;
+      this.state.matchDurationMs = matchDurationMs;
+      this.state.timeRemainingMs = matchDurationMs;
+    }
+    this.recomputeIntense();
+    this.emitChange();
   }
 
   get(): MatchState { return this.state; }
@@ -131,6 +142,14 @@ export class MatchStateManager {
     this.lastGoalTeam = team;
     this.events.onGoal(team, this.state);
     this.recomputeIntense();
+
+    const currentSettings = this.settings.get();
+    if (currentSettings.winCondition === "First to N goals") {
+      if (this.state.scoreRed >= currentSettings.goalLimit || this.state.scoreBlue >= currentSettings.goalLimit) {
+        this.endMatch();
+        return;
+      }
+    }
     this.emitChange();
   }
 

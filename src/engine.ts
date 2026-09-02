@@ -71,7 +71,8 @@ export class Engine {
   handleKickRequest(controllerMac: string): void {
     const controller = this.registry.get(controllerMac);
     const truck = controller?.pairedMac ? this.registry.get(controller.pairedMac) : undefined;
-    const result = evaluateKick(controller, truck, Date.now());
+    const settings = this.settings.get();
+    const result = evaluateKick(controller, truck, Date.now(), settings.kickerEnabled);
 
     if (!result.ok) {
       console.warn(`[powerup] kick rejected for ${controllerMac}: ${result.reason}`);
@@ -81,7 +82,8 @@ export class Engine {
       return;
     }
 
-    this.registry.setKickerCooldown(controllerMac, Date.now() + config.kickerCooldownMs);
+    const cooldownMs = settings.kickerCooldownSec * 1000;
+    this.registry.setKickerCooldown(controllerMac, Date.now() + cooldownMs);
     const truckDevice = this.registry.get(result.truckMac);
     if (truckDevice) {
       this.udp.sendWithRetry(truckDevice.ip, encodeKickFire());
@@ -96,7 +98,8 @@ export class Engine {
     const controller = this.registry.get(controllerMac);
     const targetController = this.registry.list().find(d => d.nodeType === "controller" && d.team === targetTeam);
     const targetTruck = targetController?.pairedMac ? this.registry.get(targetController.pairedMac) : undefined;
-    const result = evaluateEmp(controller, targetTruck, Date.now());
+    const settings = this.settings.get();
+    const result = evaluateEmp(controller, targetTruck, Date.now(), settings.empEnabled);
 
     if (!result.ok) {
       console.warn(`[powerup] emp rejected for ${controllerMac}: ${result.reason}`);
@@ -107,12 +110,13 @@ export class Engine {
     }
 
     this.registry.setEmpReady(controllerMac, false);
-    const until = Date.now() + config.empDurationMs;
+    const empDurationMs = settings.empCooldownSec * 1000;
+    const until = Date.now() + empDurationMs;
     this.registry.setMotorCutUntil(result.targetTruckMac, until);
 
     const targetTruckDevice = this.registry.get(result.targetTruckMac);
     if (targetTruckDevice) {
-      this.udp.sendWithRetry(targetTruckDevice.ip, encodeMotorCut(config.empDurationMs));
+      this.udp.sendWithRetry(targetTruckDevice.ip, encodeMotorCut(empDurationMs));
     }
 
     setTimeout(() => {
@@ -120,7 +124,7 @@ export class Engine {
       if (dev?.motorCutUntil === until) {
         this.registry.setMotorCutUntil(result.targetTruckMac, null);
       }
-    }, config.empDurationMs + 50);
+    }, empDurationMs + 50);
 
     const { audio, light } = empAmbiance();
     if (this.ws) {

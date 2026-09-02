@@ -57,6 +57,12 @@ describe("evaluateKick", () => {
     const truck = makeDevice({ mac: "AA:BB:CC:DD:EE:02", nodeType: "truck" });
     expect(evaluateKick(controller, truck, now)).toEqual({ ok: true, truckMac: truck.mac });
   });
+
+  it("rejects kick when disabled in settings", () => {
+    const controller = makeDevice();
+    const truck = makeDevice({ mac: "AA:BB:CC:DD:EE:02", nodeType: "truck" });
+    expect(evaluateKick(controller, truck, now, false)).toEqual({ ok: false, reason: "disabled" });
+  });
 });
 
 describe("evaluateEmp", () => {
@@ -102,5 +108,11 @@ describe("evaluateEmp", () => {
     const controller = makeDevice({ powerupEmpReady: true });
     const targetTruck = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "truck", team: "blue", motorCutUntil: null });
     expect(evaluateEmp(controller, targetTruck, now)).toEqual({ ok: true, targetTruckMac: targetTruck.mac });
+  });
+
+  it("rejects EMP when disabled in settings", () => {
+    const controller = makeDevice({ powerupEmpReady: true });
+    const targetTruck = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "truck", team: "blue", motorCutUntil: null });
+    expect(evaluateEmp(controller, targetTruck, now, false)).toEqual({ ok: false, reason: "disabled" });
   });
 });
