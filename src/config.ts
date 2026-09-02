@@ -14,7 +14,7 @@ export const config = {
 
   kickerCooldownMs: int("KICKER_COOLDOWN_MS", 15_000),
   empDurationMs: int("EMP_DURATION_MS", 3_000),
-  matchDurationMs: int("MATCH_DURATION_MS", 15 * 60_000),
+  matchDurationMs: int("MATCH_DURATION_MS", 10 * 60_000),
   intenseThresholdMs: int("INTENSE_THRESHOLD_MS", 45_000),
   offlineThresholdMs: int("OFFLINE_THRESHOLD_MS", 6_000),
   discoveryBroadcastIntervalMs: int("DISCOVERY_BROADCAST_INTERVAL_MS", 2_000),

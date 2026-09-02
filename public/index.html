@@ -417,7 +417,7 @@
       <div class="mb-6">
         <h1 class="font-headline font-bold text-2xl text-text-primary mb-2">Game Settings</h1>
         <div class="bg-bg-panel border-hairline rounded-xl p-4 text-xs text-text-secondary">
-          Your backend currently reads all of these from .env at server start (see ARCHITECTURE.md §2 / .env.example) — there's no live settings API yet. This form is a preview only; "Save" won't persist anything until you add a settings endpoint (see BACKEND_TODO.md).
+          Settings are saved live to the central server and synchronized across all arena components.
         </div>
       </div>
 
@@ -488,9 +488,8 @@
               <label class="block text-xs text-text-secondary uppercase mb-1">Lighting Mode</label>
               <select class="w-full bg-surface-container border border-border-subtle rounded-lg px-3 py-2 text-sm text-text-primary">
                 <option value="Match live (auto)">Match live (auto)</option>
-                <option value="Static red / blue">Static red / blue</option>
-                <option value="Rainbow idle">Rainbow idle</option>
-                <option value="Manual">Manual</option>
+                <option value="Always on">Always on</option>
+                <option value="Off">Off</option>
               </select>
             </div>
             <div class="flex justify-between items-center pt-1 border-t border-border-subtle/50">

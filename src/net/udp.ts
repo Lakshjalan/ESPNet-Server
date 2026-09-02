@@ -1,7 +1,7 @@
 import dgram from "node:dgram";
 import { config } from "../config.js";
 import type { DeviceRegistry } from "../state/deviceRegistry.js";
-import { encodeServerOnline, parseInbound } from "./messages.js";
+import { encodeServerOnline, encodeSetLed, parseInbound } from "./messages.js";
 import type { Team } from "../types.js";
 
 export interface UdpFleetHandlers {

@@ -28,7 +28,7 @@ function renderHistory() {
 }
 
 function refreshHistoryOnMatchEnd() {
-  api.getMatchHistory().then(h => { if (Array.isArray(h)) { matchHistory = h; renderHistory(); } }).catch(() => {});
+  api.getMatchHistory().then(h => { const entries = Array.isArray(h) ? h : (h?.entries || []); matchHistory = entries; renderHistory(); }).catch(() => {});
 }
 
 async function deleteAllMatchHistory() {

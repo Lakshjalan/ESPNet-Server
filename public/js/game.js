@@ -262,7 +262,10 @@ function addToQueue() {
   const blueSel = document.getElementById('matchBluePlayer');
   if (!redSel?.value || !blueSel?.value || redSel.value === blueSel.value) return;
   api.addToQueue(redSel.value, blueSel.value)
-    .then(item => { const q = item?.queue ? item.queue[item.queue.length - 1] : item; if (q) { matchQueue.push(q); renderQueue(); } })
+    .then(item => {
+      const q = item?.match || (item?.queue ? item.queue[item.queue.length - 1] : item);
+      if (q && q.id) { matchQueue.push(q); renderQueue(); }
+    })
     .catch(err => console.error('Queue add failed:', err));
 }
 
@@ -297,10 +300,13 @@ function startQueueMatch(id) {
   const blueP = players.find(p => String(p.id) === String(blueId));
   if (!redP?.available || !blueP?.available) { renderQueue(); return; }
   api.startQueueMatch(id)
-    .then(() => {
+    .then(res => {
       matchQueue = matchQueue.filter(q => String(q.id) !== String(id));
       renderQueue();
-      applyMatch(redP.id, blueP.id);
+      if (res?.match) {
+        applyServerState({ match: res.match });
+      }
+      showScreen('live', document.getElementById('navLiveBtn'));
     })
     .catch(err => {
       console.log("Failed to start queued match:", err);
@@ -308,7 +314,7 @@ function startQueueMatch(id) {
 }
 
 function refreshHistoryOnMatchEnd() {
-  api.getMatchHistory().then(h => { if (Array.isArray(h)) { matchHistory = h; renderHistory(); } }).catch(() => {});
+  api.getMatchHistory().then(h => { const entries = Array.isArray(h) ? h : (h?.entries || []); matchHistory = entries; renderHistory(); }).catch(() => {});
 }
 
 function normalizeHistoryEntry(m, i) {

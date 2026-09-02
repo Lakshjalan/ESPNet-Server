@@ -319,7 +319,7 @@ function renderPlayers() {
     <tr class="border-b border-border-subtle text-sm">
       <td class="py-3 px-2 font-medium text-text-primary">${p.name}</td>
       <td class="py-3 px-2"><span class="px-2 py-0.5 rounded-full text-xs font-bold uppercase ${p.team === 'red' ? 'bg-team-red/20 text-team-red' : p.team === 'blue' ? 'bg-team-blue/20 text-team-blue' : 'bg-surface-container text-text-secondary'}">${p.team === 'bench' || !p.team ? 'Bench' : p.team}</span></td>
-      <td class="py-3 px-2 font-mono text-xs text-text-secondary">${p.controller || '—'}</td>
+      <td class="py-3 px-2 font-mono text-xs text-text-secondary">${p.controller || p.controllerMac || '—'}</td>
       <td class="py-3 px-2 font-mono text-xs">${p.matches}</td>
       <td class="py-3 px-2 font-mono text-xs">${p.wins}</td>
       <td class="py-3 px-2">
