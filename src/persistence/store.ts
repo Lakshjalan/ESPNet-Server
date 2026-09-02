@@ -23,7 +23,18 @@ export class JsonStore<T> {
   async load(): Promise<T> {
     try {
       const raw = await fs.readFile(this.filePath, "utf-8");
-      return JSON.parse(raw) as T;
+      const parsed = JSON.parse(raw);
+      if (
+        typeof this.defaultValue === "object" &&
+        this.defaultValue !== null &&
+        !Array.isArray(this.defaultValue) &&
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
+        return { ...this.defaultValue, ...parsed };
+      }
+      return (parsed ?? this.defaultValue) as T;
     } catch {
       return this.defaultValue;
     }

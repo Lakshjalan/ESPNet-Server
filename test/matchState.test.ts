@@ -105,7 +105,7 @@ describe("MatchStateManager", () => {
     expect(events.onIntenseChange).toHaveBeenCalledWith(false, expect.anything());
   });
 
-  it("undo reverses the most recent goal only", () => {
+  it("undo reverses goals sequentially until history is empty", () => {
     const { manager } = makeManager();
     manager.start();
     manager.goal("red");
@@ -113,7 +113,9 @@ describe("MatchStateManager", () => {
     expect(manager.undoLastGoal()).toBe(true);
     expect(manager.get().scoreBlue).toBe(0);
     expect(manager.get().scoreRed).toBe(1);
-    // A second undo with nothing queued is a no-op, not a crash.
+    expect(manager.undoLastGoal()).toBe(true);
+    expect(manager.get().scoreRed).toBe(0);
+    // A third undo with nothing queued is a no-op, not a crash.
     expect(manager.undoLastGoal()).toBe(false);
   });
 

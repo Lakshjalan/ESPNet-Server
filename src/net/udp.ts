@@ -1,8 +1,29 @@
 import dgram from "node:dgram";
+import os from "node:os";
 import { config } from "../config.js";
 import type { DeviceRegistry } from "../state/deviceRegistry.js";
-import { encodeServerOnline, encodeSetLed, parseInbound } from "./messages.js";
+import { encodeServerOnline, encodeSetLed, encodeMotorCut, parseInbound } from "./messages.js";
 import type { Team } from "../types.js";
+
+function getBroadcastAddresses(): string[] {
+  const addresses = new Set<string>(["255.255.255.255"]);
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    const netList = interfaces[name];
+    if (!netList) continue;
+    for (const net of netList) {
+      if (net.family === "IPv4" && !net.internal && net.address && net.netmask) {
+        const ipParts = net.address.split(".").map(Number);
+        const maskParts = net.netmask.split(".").map(Number);
+        if (ipParts.length === 4 && maskParts.length === 4) {
+          const bcast = ipParts.map((p, i) => (p | (~maskParts[i]! & 255))).join(".");
+          addresses.add(bcast);
+        }
+      }
+    }
+  }
+  return [...addresses];
+}
 
 export interface UdpFleetHandlers {
   onKickRequest(mac: string): void;
@@ -21,6 +42,7 @@ export interface UdpFleetHandlers {
 export class UdpFleet {
   private socket: dgram.Socket;
   private discoveryTimer: NodeJS.Timeout | null = null;
+  private lastUnknownWarn = new Map<string, number>();
 
   constructor(
     private readonly registry: DeviceRegistry,
@@ -57,10 +79,17 @@ export class UdpFleet {
       case "heartbeat": {
         const isNew = !this.registry.get(msg.mac);
         this.registry.upsertFromHeartbeat(msg);
-        // If the device skipped DISCOVER_SERVER and came straight in with a
-        // heartbeat, it hasn't received ESPNet-Server-Online yet — send it now
-        // so firmware transitions out of its discovery loop immediately.
         if (isNew) this.sendTo(rinfo.address, encodeServerOnline());
+
+        const dev = this.registry.get(msg.mac);
+        if (dev && dev.motorCutUntil !== null) {
+          const remainingMs = dev.motorCutUntil - Date.now();
+          if (remainingMs > 0) {
+            this.sendTo(rinfo.address, encodeMotorCut(remainingMs));
+          } else {
+            this.registry.setMotorCutUntil(msg.mac, null);
+          }
+        }
         break;
       }
       case "kick_req":
@@ -69,9 +98,15 @@ export class UdpFleet {
       case "emp_req":
         this.handlers.onEmpRequest(msg.mac, msg.targetTeam);
         break;
-      case "unknown":
-        console.warn(`[udp] unrecognized packet from ${rinfo.address}: ${msg.raw.slice(0, 64)}`);
+      case "unknown": {
+        const now = Date.now();
+        const last = this.lastUnknownWarn.get(rinfo.address) ?? 0;
+        if (now - last > 5000) {
+          this.lastUnknownWarn.set(rinfo.address, now);
+          console.warn(`[udp] unrecognized packet from ${rinfo.address}: ${msg.raw.slice(0, 64)}`);
+        }
         break;
+      }
     }
   }
 
@@ -89,20 +124,23 @@ export class UdpFleet {
   }
 
   /**
-   * Send a command with one short-delay retry to absorb a single dropped
-   * packet (e.g. sent the instant a target ESP32 rebooted). The dictionary
-   * has no ACK, so this is best-effort by design — see ARCHITECTURE.md.
+   * Send a command with multiple staggered retries to survive UDP packet loss bursts on busy arena WiFi.
    */
-  sendWithRetry(ip: string, message: string, retryDelayMs = 120): void {
+  sendWithRetry(ip: string, message: string, retryDelaysMs: number[] = [60, 180]): void {
     this.sendTo(ip, message);
-    setTimeout(() => this.sendTo(ip, message), retryDelayMs);
+    for (const delay of retryDelaysMs) {
+      setTimeout(() => this.sendTo(ip, message), delay);
+    }
   }
 
   private broadcastDiscovery(): void {
     const payload = Buffer.from(encodeServerOnline(), "utf-8");
-    this.socket.send(payload, config.espPort, "255.255.255.255", (err) => {
-      if (err) console.error(`[udp] discovery broadcast failed: ${err.message}`);
-    });
+    const targets = getBroadcastAddresses();
+    for (const target of targets) {
+      this.socket.send(payload, config.espPort, target, (err) => {
+        if (err) console.error(`[udp] discovery broadcast to ${target} failed: ${err.message}`);
+      });
+    }
   }
 
   async stop(): Promise<void> {

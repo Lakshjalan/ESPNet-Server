@@ -96,8 +96,9 @@ export class Engine {
 
   handleEmpRequest(controllerMac: string, targetTeam: Team): void {
     const controller = this.registry.get(controllerMac);
-    const targetController = this.registry.list().find(d => d.nodeType === "controller" && d.team === targetTeam);
-    const targetTruck = targetController?.pairedMac ? this.registry.get(targetController.pairedMac) : undefined;
+    const targetTruck = this.registry.list().find(
+      d => d.nodeType === "truck" && (d.team === targetTeam || (d.pairedMac ? this.registry.get(d.pairedMac)?.team === targetTeam : false))
+    );
     const settings = this.settings.get();
     const result = evaluateEmp(controller, targetTruck, Date.now(), settings.empEnabled);
 
@@ -109,7 +110,15 @@ export class Engine {
       return;
     }
 
-    this.registry.setEmpReady(controllerMac, false);
+    if (controller?.team) {
+      for (const dev of this.registry.list()) {
+        if (dev.nodeType === "controller" && dev.team === controller.team) {
+          this.registry.setEmpReady(dev.mac, false);
+        }
+      }
+    } else {
+      this.registry.setEmpReady(controllerMac, false);
+    }
     const empDurationMs = settings.empCooldownSec * 1000;
     const until = Date.now() + empDurationMs;
     this.registry.setMotorCutUntil(result.targetTruckMac, until);
