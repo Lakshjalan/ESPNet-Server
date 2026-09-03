@@ -96,11 +96,12 @@ export class Engine {
 
   handleEmpRequest(controllerMac: string, targetTeam: Team): void {
     const controller = this.registry.get(controllerMac);
-    const targetTruck = this.registry.list().find(
-      d => d.nodeType === "truck" && (d.team === targetTeam || (d.pairedMac ? this.registry.get(d.pairedMac)?.team === targetTeam : false))
+    // Find the opponent team's controller (relay/MOSFET target)
+    const targetController = this.registry.list().find(
+      d => d.nodeType === "controller" && d.team === targetTeam
     );
     const settings = this.settings.get();
-    const result = evaluateEmp(controller, targetTruck, Date.now(), settings.empEnabled);
+    const result = evaluateEmp(controller, targetController, Date.now(), settings.empEnabled);
 
     if (!result.ok) {
       console.warn(`[powerup] emp rejected for ${controllerMac}: ${result.reason}`);
@@ -121,17 +122,17 @@ export class Engine {
     }
     const empDurationMs = settings.empCooldownSec * 1000;
     const until = Date.now() + empDurationMs;
-    this.registry.setMotorCutUntil(result.targetTruckMac, until);
+    this.registry.setMotorCutUntil(result.targetControllerMac, until);
 
-    const targetTruckDevice = this.registry.get(result.targetTruckMac);
-    if (targetTruckDevice) {
-      this.udp.sendWithRetry(targetTruckDevice.ip, encodeMotorCut(empDurationMs));
+    const targetControllerDevice = this.registry.get(result.targetControllerMac);
+    if (targetControllerDevice) {
+      this.udp.sendWithRetry(targetControllerDevice.ip, encodeMotorCut(empDurationMs));
     }
 
     setTimeout(() => {
-      const dev = this.registry.get(result.targetTruckMac);
+      const dev = this.registry.get(result.targetControllerMac);
       if (dev?.motorCutUntil === until) {
-        this.registry.setMotorCutUntil(result.targetTruckMac, null);
+        this.registry.setMotorCutUntil(result.targetControllerMac, null);
       }
     }, empDurationMs + 50);
 

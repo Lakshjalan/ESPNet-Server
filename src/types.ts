@@ -23,7 +23,7 @@ export interface DeviceNode {
   kickerCooldownUntil: number | null;
   /** Unlocked by match rules (2 consecutive goals or trailing by 2); consumed on use. */
   powerupEmpReady: boolean;
-  /** Set while this truck's motor driver is cut by an opponent's EMP. */
+  /** Set while this controller's power is cut by an opponent's EMP (relay/MOSFET). */
   motorCutUntil: number | null;
 }
 

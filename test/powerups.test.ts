@@ -68,8 +68,8 @@ describe("evaluateKick", () => {
 describe("evaluateEmp", () => {
   const now = 1_000_000;
 
-  // EMP now targets the opponent's truck (motor driver), not their controller.
-  // The target passed to evaluateEmp must be the opponent's truck node.
+  // EMP targets the opponent's controller (relay/MOSFET), cutting its power.
+  // The target passed to evaluateEmp must be the opponent's controller node.
 
   it("rejects an unknown controller", () => {
     expect(evaluateEmp(undefined, undefined, now)).toEqual({ ok: false, reason: "unknown_controller" });
@@ -77,42 +77,42 @@ describe("evaluateEmp", () => {
 
   it("rejects when the power-up hasn't been earned", () => {
     const controller = makeDevice({ powerupEmpReady: false });
-    const targetTruck = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "truck", team: "blue" });
-    expect(evaluateEmp(controller, targetTruck, now)).toEqual({ ok: false, reason: "not_eligible" });
+    const targetController = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "controller", team: "blue" });
+    expect(evaluateEmp(controller, targetController, now)).toEqual({ ok: false, reason: "not_eligible" });
   });
 
-  it("rejects when there is no opponent truck to target", () => {
+  it("rejects when there is no opponent controller to target", () => {
     const controller = makeDevice({ powerupEmpReady: true });
-    expect(evaluateEmp(controller, undefined, now)).toEqual({ ok: false, reason: "no_target_truck" });
+    expect(evaluateEmp(controller, undefined, now)).toEqual({ ok: false, reason: "no_target_controller" });
   });
 
-  it("rejects an offline target truck", () => {
+  it("rejects an offline target controller", () => {
     const controller = makeDevice({ powerupEmpReady: true });
-    const targetTruck = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "truck", team: "blue", isOnline: false });
-    expect(evaluateEmp(controller, targetTruck, now)).toEqual({ ok: false, reason: "target_offline" });
+    const targetController = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "controller", team: "blue", isOnline: false });
+    expect(evaluateEmp(controller, targetController, now)).toEqual({ ok: false, reason: "target_offline" });
   });
 
-  it("rejects a truck whose motor is already cut", () => {
+  it("rejects a controller whose power is already cut", () => {
     const controller = makeDevice({ powerupEmpReady: true });
-    const targetTruck = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "truck", team: "blue", motorCutUntil: now + 1000 });
-    expect(evaluateEmp(controller, targetTruck, now)).toEqual({ ok: false, reason: "target_already_frozen" });
+    const targetController = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "controller", team: "blue", motorCutUntil: now + 1000 });
+    expect(evaluateEmp(controller, targetController, now)).toEqual({ ok: false, reason: "target_already_frozen" });
   });
 
-  it("allows a valid EMP once the previous motor-cut has expired", () => {
+  it("allows a valid EMP once the previous power-cut has expired", () => {
     const controller = makeDevice({ powerupEmpReady: true });
-    const targetTruck = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "truck", team: "blue", motorCutUntil: now - 1 });
-    expect(evaluateEmp(controller, targetTruck, now)).toEqual({ ok: true, targetTruckMac: targetTruck.mac });
+    const targetController = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "controller", team: "blue", motorCutUntil: now - 1 });
+    expect(evaluateEmp(controller, targetController, now)).toEqual({ ok: true, targetControllerMac: targetController.mac });
   });
 
-  it("allows a clean EMP on a truck with no prior motor-cut", () => {
+  it("allows a clean EMP on a controller with no prior power-cut", () => {
     const controller = makeDevice({ powerupEmpReady: true });
-    const targetTruck = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "truck", team: "blue", motorCutUntil: null });
-    expect(evaluateEmp(controller, targetTruck, now)).toEqual({ ok: true, targetTruckMac: targetTruck.mac });
+    const targetController = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "controller", team: "blue", motorCutUntil: null });
+    expect(evaluateEmp(controller, targetController, now)).toEqual({ ok: true, targetControllerMac: targetController.mac });
   });
 
   it("rejects EMP when disabled in settings", () => {
     const controller = makeDevice({ powerupEmpReady: true });
-    const targetTruck = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "truck", team: "blue", motorCutUntil: null });
-    expect(evaluateEmp(controller, targetTruck, now, false)).toEqual({ ok: false, reason: "disabled" });
+    const targetController = makeDevice({ mac: "AA:BB:CC:DD:EE:03", nodeType: "controller", team: "blue", motorCutUntil: null });
+    expect(evaluateEmp(controller, targetController, now, false)).toEqual({ ok: false, reason: "disabled" });
   });
 });

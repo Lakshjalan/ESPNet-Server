@@ -22,13 +22,13 @@ This stays outside the TypeScript server; a microcontroller runs firmware,
 not Node. Tracked here because the server's wire contract (ARCHITECTURE.md
 §3) is what the firmware must speak.
 
-- [ ] Remote battery MOSFET wiring + cut test (3x controllers)
+- [ ] Remote battery MOSFET / relay wiring + cut test (3x controllers)
 - [ ] Truck 3D-printed kicker servo mount + actuation range tuning
 - [ ] WS2812B lighting strip driver on the lighting ESP32
 - [ ] **Controller firmware** (×3): read kicker/EMP buttons → send
       `EVENT|KICK_REQ` / `EVENT|EMP_REQ`; listen for `CMD|SET_LED`; drive the
-      MOSFET gate on `CMD|POWER_CUT`; send `HEARTBEAT` every 2s with
-      `nodeType=controller` and its physical team label
+      MOSFET/relay gate on `CMD|POWER_CUT` (cuts controller power when EMP'd by opponent);
+      send `HEARTBEAT` every 2s with `nodeType=controller` and its physical team label
 - [ ] **Truck firmware** (×3): listen for `CMD|KICK_FIRE`, drive servo;
       `HEARTBEAT` every 2s with `nodeType=truck`
 - [ ] **Lighting firmware** (×1): listen for `CMD|LIGHT_FX|pattern[|rgb]`,

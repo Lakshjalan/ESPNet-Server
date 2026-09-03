@@ -26,33 +26,33 @@ export function evaluateKick(
 export type EmpRejectReason =
   | "unknown_controller"
   | "not_eligible"
-  | "no_target_truck"
+  | "no_target_controller"
   | "target_already_frozen"
   | "target_offline"
   | "disabled";
-export type EmpResult = { ok: true; targetTruckMac: string } | { ok: false; reason: EmpRejectReason };
+export type EmpResult = { ok: true; targetControllerMac: string } | { ok: false; reason: EmpRejectReason };
 
 /**
  * Evaluates whether an EMP can fire.
- * `controller`   — the device that pressed the EMP button
- * `targetTruck`  — the opponent team's paired truck (motor driver target)
+ * `controller`       — the device that pressed the EMP button
+ * `targetController` — the opponent team's controller (relay/MOSFET target)
  *
- * The EMP is now sent to the truck's motor driver (CMD|MOTOR_CUT), not to
- * the controller's MOSFET. The truck must be online and not already motor-cut.
+ * The EMP is sent to the opponent's controller (CMD|POWER_CUT), which cuts
+ * power via a relay or MOSFET. The controller must be online and not already cut.
  */
 export function evaluateEmp(
   controller: DeviceNode | undefined,
-  targetTruck: DeviceNode | undefined,
+  targetController: DeviceNode | undefined,
   now: number,
   enabled = true,
 ): EmpResult {
   if (!enabled) return { ok: false, reason: "disabled" };
   if (!controller) return { ok: false, reason: "unknown_controller" };
   if (!controller.powerupEmpReady) return { ok: false, reason: "not_eligible" };
-  if (!targetTruck) return { ok: false, reason: "no_target_truck" };
-  if (!targetTruck.isOnline) return { ok: false, reason: "target_offline" };
-  if (targetTruck.motorCutUntil !== null && now < targetTruck.motorCutUntil) {
+  if (!targetController) return { ok: false, reason: "no_target_controller" };
+  if (!targetController.isOnline) return { ok: false, reason: "target_offline" };
+  if (targetController.motorCutUntil !== null && now < targetController.motorCutUntil) {
     return { ok: false, reason: "target_already_frozen" };
   }
-  return { ok: true, targetTruckMac: targetTruck.mac };
+  return { ok: true, targetControllerMac: targetController.mac };
 }
