@@ -9,7 +9,7 @@ import { WsHub } from "./http/ws.js";
 import { SpotifyClient } from "./audio/spotify.js";
 import { evaluateKick, evaluateEmp } from "./game/powerups.js";
 import { goalAmbiance, intenseAmbiance, empAmbiance, matchEndAmbiance, matchStartAmbiance } from "./game/ambiance.js";
-import { encodeKickFire, encodeMotorCut, encodeLightFx } from "./net/messages.js";
+import { encodeKickFire, encodeMotorCut, encodeLightFx, encodeSetLed } from "./net/messages.js";
 import type { Server as HttpServer } from "node:http";
 import type { Team } from "./types.js";
 
@@ -115,10 +115,12 @@ export class Engine {
       for (const dev of this.registry.list()) {
         if (dev.nodeType === "controller" && dev.team === controller.team) {
           this.registry.setEmpReady(dev.mac, false);
+          this.udp.sendTo(dev.ip, encodeSetLed("BLINK"));
         }
       }
     } else {
       this.registry.setEmpReady(controllerMac, false);
+      if (controller) this.udp.sendTo(controller.ip, encodeSetLed("BLINK"));
     }
     const empDurationMs = settings.empCooldownSec * 1000;
     const until = Date.now() + empDurationMs;
@@ -134,6 +136,16 @@ export class Engine {
       if (dev?.motorCutUntil === until) {
         this.registry.setMotorCutUntil(result.targetControllerMac, null);
       }
+      // Revert the attacker's LED from BLINK to OFF once the sabotage finishes
+      if (controller?.team) {
+        for (const c of this.registry.list()) {
+          if (c.nodeType === "controller" && c.team === controller.team && !c.powerupEmpReady) {
+            this.udp.sendTo(c.ip, encodeSetLed("OFF"));
+          }
+        }
+      } else if (controller && !this.registry.get(controllerMac)?.powerupEmpReady) {
+        this.udp.sendTo(controller.ip, encodeSetLed("OFF"));
+      }
     }, empDurationMs + 50);
 
     const { audio, light } = empAmbiance();
@@ -148,7 +160,11 @@ export class Engine {
     const eligibility = computeEmpEligibility(this.match.get());
     for (const controller of this.registry.list()) {
       if (controller.nodeType === "controller" && controller.team && eligibility[controller.team]) {
+        const wasReady = controller.powerupEmpReady;
         this.registry.setEmpReady(controller.mac, true);
+        if (!wasReady) {
+          this.udp.sendTo(controller.ip, encodeSetLed("ON"));
+        }
       }
     }
 
