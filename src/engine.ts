@@ -49,6 +49,16 @@ export class Engine {
           this.ws.broadcast({ type: "ping_ack", mac, latencyMs });
         }
       },
+      onKickAck: (mac) => {
+        if (this.ws) {
+          this.ws.broadcast({ type: "kick_ack", mac });
+        }
+      },
+      onEmpAck: (mac) => {
+        if (this.ws) {
+          this.ws.broadcast({ type: "emp_ack", mac });
+        }
+      },
     });
     await this.udp.start();
 

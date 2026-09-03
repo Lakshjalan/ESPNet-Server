@@ -316,84 +316,39 @@ function logTestConsole(msg, isError = false) {
   if (!consoleEl) return;
   const time = new Date().toLocaleTimeString();
   const line = document.createElement('div');
-  line.className = isError ? 'text-status-error' : 'text-status-ready';
+  line.className = isError ? 'text-status-error font-semibold' : 'text-status-ready font-semibold';
   line.textContent = `[${time}] ${msg}`;
   consoleEl.prepend(line);
 }
 
-function testSimulateKick(side) {
-  const controller = latestDevices.find(d => d.nodeType === 'controller' && d.team === side);
-  if (!controller) {
-    logTestConsole(`Failed: No ${side} controller registered in fleet!`, true);
-    return;
-  }
-  logTestConsole(`Simulating ${side.toUpperCase()} controller button press (KICK_REQ)...`);
-  api.simKick(controller.mac)
-    .then(res => logTestConsole(`✓ ${res.message}`))
-    .catch(err => logTestConsole(`❌ ${err.message}`, true));
-}
+function testKick(team) {
+  const teamTitle = team.toUpperCase();
+  logTestConsole(`[${teamTitle}] Sending Kicker signal...`);
 
-function testSimulateEmp(side) {
-  const controller = latestDevices.find(d => d.nodeType === 'controller' && d.team === side);
-  if (!controller) {
-    logTestConsole(`Failed: No ${side} controller registered in fleet!`, true);
-    return;
-  }
-  logTestConsole(`Simulating ${side.toUpperCase()} controller button press (EMP_REQ)...`);
-  api.simEmp(controller.mac)
-    .then(res => logTestConsole(`✓ ${res.message}`))
-    .catch(err => logTestConsole(`❌ ${err.message}`, true));
-}
-
-function testDirectKick(team) {
-  logTestConsole(`Sending direct KICK_FIRE to ${team.toUpperCase()} truck...`);
   api.testKick(team)
-    .then(res => logTestConsole(`✓ ${res.message}`))
-    .catch(err => logTestConsole(`❌ ${err.message}`, true));
+    .then(() => {
+      logTestConsole(`[${teamTitle} Truck] Kicker signal received! ✅`);
+    })
+    .catch(err => {
+      logTestConsole(`❌ [${teamTitle} Truck] Failed: ${err.message}`, true);
+    });
 }
 
-function testDirectEmp(attackerTeam) {
+function testEmp(attackerTeam) {
   const targetTeam = attackerTeam === 'red' ? 'blue' : 'red';
-  logTestConsole(`Sending direct POWER_CUT to ${targetTeam.toUpperCase()} controller...`);
+  const attackerTitle = attackerTeam.toUpperCase();
+  const targetTitle = targetTeam.toUpperCase();
+
+  logTestConsole(`[${attackerTitle}] Sending EMP signal...`);
+
   api.testEmp(attackerTeam)
-    .then(res => logTestConsole(`✓ ${res.message}`))
-    .catch(err => logTestConsole(`❌ ${err.message}`, true));
+    .then(() => {
+      logTestConsole(`[${targetTitle} Controller] EMP signal received (Power Cut)! ✅`);
+    })
+    .catch(err => {
+      logTestConsole(`❌ [${targetTitle} Controller] Failed: ${err.message}`, true);
+    });
 }
 
-function pingDevice(mac) {
-  logTestConsole(`Pinging ESP [${mac}]...`);
-  api.pingDevice(mac).catch(err => logTestConsole(`❌ Ping failed for ${mac}: ${err.message}`, true));
-}
 
-function pingAllDevices() {
-  const online = latestDevices.filter(d => d.isOnline);
-  if (!online.length) {
-    logTestConsole("No devices currently online to ping.", true);
-    return;
-  }
-  logTestConsole(`Pinging all ${online.length} online ESP devices...`);
-  online.forEach(dev => pingDevice(dev.mac));
-}
-
-// Listen for WebSocket ping_ack events
-bus.on('ping_ack', (payload) => {
-  const dev = latestDevices.find(d => d.mac === payload.mac);
-  const name = dev?.label || (dev?.team ? dev.team.toUpperCase() + ' ' + dev.nodeType : dev?.mac);
-  logTestConsole(`📶 PING ACK from ${name}: ${payload.latencyMs} ms latency`);
-
-  const pingList = document.getElementById('pingList');
-  if (pingList) {
-    let item = document.getElementById(`pingItem_${payload.mac}`);
-    if (!item) {
-      item = document.createElement('div');
-      item.id = `pingItem_${payload.mac}`;
-      item.className = 'flex justify-between items-center py-1 border-b border-border-subtle/50';
-      pingList.appendChild(item);
-    }
-    item.innerHTML = `
-      <span>${name}</span>
-      <span class="text-status-ready font-semibold">${payload.latencyMs} ms</span>
-    `;
-  }
-});
 

@@ -137,6 +137,10 @@ void handleIncoming(const char* msg, IPAddress remoteIp) {
     }
     if (strcmp(parts[1], "KICK_FIRE") == 0) {
       startKick();
+      char reply[64];
+      snprintf(reply, sizeof(reply), "EVENT|KICK_ACK|%s", myMac.c_str());
+      sendUdp(reply);
+      Serial.println("[kick] Sent KICK_ACK to server");
     }
   }
 }

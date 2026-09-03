@@ -167,10 +167,10 @@ void handleIncoming(const char* msg, IPAddress remoteIp) {
     return;
   }
 
-  // ── Origin check: only accept CMD packets from the confirmed server ──
-  // Remove this block if you want the previous (unauthenticated) behavior.
-  if (!serverFound || remoteIp != serverIp) return;
-
+  if (!serverFound) {
+    serverFound = true;
+    serverIp    = remoteIp;
+  }
   lastServerPacketMs = millis();
 
   char buf[128];
@@ -212,6 +212,10 @@ void handleIncoming(const char* msg, IPAddress remoteIp) {
   if (strcmp(parts[1], "POWER_CUT") == 0 && n >= 3) {
     uint32_t ms = (uint32_t)atol(parts[2]);
     if (ms > 0) handlePowerCut(ms);
+    char reply[64];
+    snprintf(reply, sizeof(reply), "EVENT|EMP_ACK|%s", myMac.c_str());
+    sendUdp(reply);
+    Serial.println("[EMP] Sent EMP_ACK to server");
     return;
   }
 }
