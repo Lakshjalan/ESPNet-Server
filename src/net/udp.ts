@@ -77,12 +77,18 @@ export class UdpFleet {
         this.sendTo(rinfo.address, encodeServerOnline());
         break;
       case "heartbeat": {
-        const isNew = !this.registry.get(msg.mac);
+        const existing = this.registry.get(msg.mac);
+        const wasOfflineOrNew = !existing || !existing.isOnline;
         this.registry.upsertFromHeartbeat(msg);
         console.log(`[udp] heartbeat from ${msg.mac} (${msg.ip}) team=${msg.team ?? "?"} batt=${msg.batteryPct ?? "?"}%`);
-        if (isNew) this.sendTo(rinfo.address, encodeServerOnline());
+        if (wasOfflineOrNew) {
+          this.sendTo(rinfo.address, encodeServerOnline());
+        }
 
         const dev = this.registry.get(msg.mac);
+        if (dev && dev.nodeType === "controller") {
+          this.sendLedForDevice(rinfo.address, dev.powerupEmpReady);
+        }
         if (dev && dev.motorCutUntil !== null) {
           const remainingMs = dev.motorCutUntil - Date.now();
           if (remainingMs > 0) {

@@ -1,14 +1,35 @@
 /**
- * RoboSoccer — Blue Controller Firmware (ESP32-S3 Super Mini)
- * [UPDATE]: Added LED sabotage logic, dual broadcast discovery, dynamic server tracking & modem sleep disabled
+ * RoboSoccer — Blue Controller Firmware (ESP32-C3 Super Mini)
+ *
+ * Hardware:
+ *   ESP32-C3 Super Mini (RISC-V)
+ *   GPIO 4  → MOSFET Gate (Motor power control)
+ *   GPIO 8  → KICK Button (INPUT_PULLUP)
+ *   GPIO 10 → EMP Button  (INPUT_PULLUP)
+ *   GPIO 2  → Indicator LED
+ *
+ * Changes from previous version:
+ *   - WiFi.onEvent() handler added — prints disconnect reason codes so
+ *     connection failures are diagnosable instead of showing generic
+ *     "sta is connecting, return error" spam.
+ *   - Manual WiFi.reconnect() watchdog removed — it was colliding with
+ *     WiFi.setAutoReconnect(true), which was the likely cause of the
+ *     repeating IDF error.
+ *   - sendDiscovery()/sendHeartbeat() now log to Serial so you can watch
+ *     the connect → discover → confirm → heartbeat sequence live.
+ *   - handleIncoming() now rejects CMD|... packets that don't originate
+ *     from the confirmed serverIp (previously any device on the LAN
+ *     could send POWER_CUT/SET_LED). Flagging this here since it's a
+ *     behavior change from the original file — remove the check block
+ *     marked below if you don't want it yet.
  */
 
 #include <WiFi.h>
 #include <WiFiUdp.h>
 
 // ─── CONFIG ─────────────────────────────────────────────────────────────────
-#define WIFI_SSID       "OpenWrt"
-#define WIFI_PASSWORD   "Tonu@4059$"
+#define WIFI_SSID       "LAKSH 6817"
+#define WIFI_PASSWORD   "5C37?8x3"
 #define WIFI_HOSTNAME   "robosoccer_blue_controller"
 
 #define MY_TEAM         "blue"
@@ -35,7 +56,6 @@ IPAddress serverIp;
 uint32_t  lastHeartbeatMs     = 0;
 uint32_t  lastDiscoveryMs     = 0;
 uint32_t  lastServerPacketMs  = 0;
-uint32_t  lastWifiCheckMs     = 0;
 bool      wasWifiConnected    = false;
 
 uint32_t lastBtn1Ms        = 0;
@@ -53,6 +73,33 @@ uint32_t powerCutUntilMs   = 0;
 
 String   myMac;
 
+// ─── WIFI EVENT HANDLER (diagnostics) ───────────────────────────────────────
+
+void onWifiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+  switch (event) {
+    case ARDUINO_EVENT_WIFI_STA_START:
+      Serial.println("[wifi event] STA started");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      Serial.println("[wifi event] Associated with AP");
+      break;
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      Serial.printf("[wifi event] Got IP: %s\n", WiFi.localIP().toString().c_str());
+      break;
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+      Serial.printf("[wifi event] Disconnected — reason: %d\n",
+                     info.wifi_sta_disconnected.reason);
+      // Common reason codes:
+      //   2   AUTH_EXPIRE
+      //   15  4WAY_HANDSHAKE_TIMEOUT   → usually wrong password
+      //   201 NO_AP_FOUND              → SSID not visible (wrong band/typo/OOR)
+      //   205 AUTH_FAIL
+      break;
+    default:
+      break;
+  }
+}
+
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
 void sendUdp(const char* msg) {
@@ -64,7 +111,8 @@ void sendUdp(const char* msg) {
 
 void sendDiscovery() {
   const char* d = "DISCOVER_SERVER";
-  
+  Serial.println("[net] Sending discovery...");
+
   // 1. Limited broadcast
   udp.beginPacket(IPAddress(255, 255, 255, 255), SERVER_UDP_PORT);
   udp.write((const uint8_t*)d, strlen(d));
@@ -86,6 +134,7 @@ void sendHeartbeat() {
     myMac.c_str(), WiFi.localIP().toString().c_str(), MY_TEAM
   );
   sendUdp(buf);
+  Serial.printf("[net] Heartbeat sent -> %s\n", buf);
 }
 
 void setMosfet(bool on) {
@@ -107,17 +156,22 @@ void handlePowerCut(uint32_t durationMs) {
 // ─── INCOMING UDP ────────────────────────────────────────────────────────────
 
 void handleIncoming(const char* msg, IPAddress remoteIp) {
-  lastServerPacketMs = millis();
-
   if (strcmp(msg, "ESPNet-Server-Online") == 0) {
     if (!serverFound || serverIp != remoteIp) {
       serverFound = true;
       serverIp    = remoteIp;
       Serial.printf("[net] Server confirmed @ %s\n", serverIp.toString().c_str());
-      lastHeartbeatMs = 0;
+      lastHeartbeatMs = 0; // trigger immediate heartbeat
     }
+    lastServerPacketMs = millis();
     return;
   }
+
+  // ── Origin check: only accept CMD packets from the confirmed server ──
+  // Remove this block if you want the previous (unauthenticated) behavior.
+  if (!serverFound || remoteIp != serverIp) return;
+
+  lastServerPacketMs = millis();
 
   char buf[128];
   strncpy(buf, msg, sizeof(buf) - 1);
@@ -132,17 +186,17 @@ void handleIncoming(const char* msg, IPAddress remoteIp) {
 
   if (strcmp(parts[1], "SET_LED") == 0 && n >= 3) {
     ledBlinkMode = false;
-    if (strcmp(parts[2], "ON") == 0) { 
+    if (strcmp(parts[2], "ON") == 0) {
       empReadyState = true;
-      if (!powerCutActive) setLed(true); 
+      if (!powerCutActive) setLed(true);
     }
-    else if (strcmp(parts[2], "OFF") == 0) { 
-      empReadyState = false; 
-      if (!powerCutActive) setLed(false); 
+    else if (strcmp(parts[2], "OFF") == 0) {
+      empReadyState = false;
+      if (!powerCutActive) setLed(false);
     }
-    else if (strcmp(parts[2], "BLINK") == 0) { 
-      empReadyState = false; 
-      ledBlinkMode = true; 
+    else if (strcmp(parts[2], "BLINK") == 0) {
+      empReadyState = false;
+      ledBlinkMode = true;
     }
     return;
   }
@@ -168,8 +222,9 @@ void setup() {
   setMosfet(true);
   setLed(false);
 
+  WiFi.onEvent(onWifiEvent);
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);              // Prevent WiFi modem sleep
+  WiFi.setSleep(false);              // Disable modem sleep to prevent RF receiver drops
   WiFi.setAutoReconnect(true);       // Let the ESP-IDF stack auto-reconnect
   WiFi.setHostname(WIFI_HOSTNAME);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -180,12 +235,12 @@ void setup() {
     delay(250);
     Serial.print('.');
   }
-  
+
   if (WiFi.status() == WL_CONNECTED) {
     wasWifiConnected = true;
     Serial.printf("\n[wifi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
   } else {
-    Serial.println("\n[wifi] Initial connection timed out, will retry in loop...");
+    Serial.println("\n[wifi] Initial connection timed out — auto-reconnect will keep trying in loop().");
   }
 
   myMac = WiFi.macAddress();
@@ -198,18 +253,19 @@ void loop() {
   const bool isWifiConnected = (WiFi.status() == WL_CONNECTED);
 
   // ── WiFi watchdog ──
+  // Note: no manual WiFi.reconnect() call here anymore — that was firing
+  // on its own 10s timer *while* WiFi.setAutoReconnect(true) was already
+  // retrying in the background, and the two colliding is the most likely
+  // source of the "sta is connecting, return error" spam. Auto-reconnect
+  // alone is sufficient; the events above tell you what's actually failing.
   if (!isWifiConnected) {
-    setMosfet(true); // Safety: enable MOSFET if network drops
+    setMosfet(true); // Safety: keep MOSFET powered if network drops
     if (wasWifiConnected) {
       wasWifiConnected = false;
       serverFound      = false;
       lastDiscoveryMs  = 0;
       lastHeartbeatMs  = 0;
-      Serial.println("[wifi] Connection lost — waiting for reconnect...");
-    }
-    if (now - lastWifiCheckMs >= 10000) {
-      lastWifiCheckMs = now;
-      WiFi.reconnect();
+      Serial.println("[wifi] Connection lost — waiting for auto-reconnect...");
     }
     delay(10);
     return;
@@ -256,7 +312,7 @@ void loop() {
   if (ledBlinkMode && (now - lastBlinkMs >= BLINK_INTERVAL_MS)) {
     lastBlinkMs   = now;
     ledBlinkState = !ledBlinkState;
-    if (!powerCutActive) setLed(ledBlinkState); 
+    if (!powerCutActive) setLed(ledBlinkState);
   }
 
   // ── Button 1: Kick Request ──
@@ -278,7 +334,7 @@ void loop() {
     char buf[80];
     snprintf(buf, sizeof(buf), "EVENT|EMP_REQ|%s|%s", myMac.c_str(), target);
     sendUdp(buf);
-    Serial.printf("[btn2] EMP_REQ → %s\n", target);
+    Serial.printf("[btn2] EMP_REQ -> %s\n", target);
   }
   prevBtn2 = btn2;
 
