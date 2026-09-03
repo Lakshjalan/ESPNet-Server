@@ -1,6 +1,6 @@
 /**
- * RoboSoccer — Controller Firmware (ESP32-S3 Super Mini)
- * [UPDATE]: Added LED sabotage logic (Glow solid when EMP'd, Blink when successfully EMP'd opponent)
+ * RoboSoccer — Blue Controller Firmware (ESP32-S3 Super Mini)
+ * [UPDATE]: Added LED sabotage logic, dual broadcast discovery, dynamic server tracking & modem sleep disabled
  */
 
 #include <WiFi.h>
@@ -9,14 +9,16 @@
 // ─── CONFIG ─────────────────────────────────────────────────────────────────
 #define WIFI_SSID       "OpenWrt"
 #define WIFI_PASSWORD   "Tonu@4059$"
+#define WIFI_HOSTNAME   "robosoccer_blue_controller"
 
-#define MY_TEAM         "red"
+#define MY_TEAM         "blue"
 
 #define SERVER_UDP_PORT 8888
 #define MY_UDP_PORT     8889
 
 #define HEARTBEAT_INTERVAL_MS   2000
 #define DISCOVERY_INTERVAL_MS   1000
+#define SERVER_TIMEOUT_MS       10000
 #define BUTTON_DEBOUNCE_MS       150
 #define BLINK_INTERVAL_MS        400
 
@@ -28,10 +30,14 @@
 
 WiFiUDP udp;
 
-bool     serverFound       = false;
+bool      serverFound         = false;
 IPAddress serverIp;
-uint32_t lastHeartbeatMs   = 0;
-uint32_t lastDiscoveryMs   = 0;
+uint32_t  lastHeartbeatMs     = 0;
+uint32_t  lastDiscoveryMs     = 0;
+uint32_t  lastServerPacketMs  = 0;
+uint32_t  lastWifiCheckMs     = 0;
+bool      wasWifiConnected    = false;
+
 uint32_t lastBtn1Ms        = 0;
 uint32_t lastBtn2Ms        = 0;
 bool     prevBtn1          = HIGH;
@@ -40,7 +46,7 @@ bool     prevBtn2          = HIGH;
 bool     ledBlinkMode      = false;
 bool     ledBlinkState     = false;
 uint32_t lastBlinkMs       = 0;
-bool     empReadyState     = false; // Added to remember standard EMP ready state
+bool     empReadyState     = false;
 
 bool     powerCutActive    = false;
 uint32_t powerCutUntilMs   = 0;
@@ -57,10 +63,20 @@ void sendUdp(const char* msg) {
 }
 
 void sendDiscovery() {
-  udp.beginPacket(IPAddress(255, 255, 255, 255), SERVER_UDP_PORT);
   const char* d = "DISCOVER_SERVER";
+  
+  // 1. Limited broadcast
+  udp.beginPacket(IPAddress(255, 255, 255, 255), SERVER_UDP_PORT);
   udp.write((const uint8_t*)d, strlen(d));
   udp.endPacket();
+
+  // 2. Subnet-directed broadcast (e.g. 192.168.0.255)
+  IPAddress bcast = WiFi.broadcastIP();
+  if (bcast != IPAddress(255, 255, 255, 255) && bcast != IPAddress(0, 0, 0, 0)) {
+    udp.beginPacket(bcast, SERVER_UDP_PORT);
+    udp.write((const uint8_t*)d, strlen(d));
+    udp.endPacket();
+  }
 }
 
 void sendHeartbeat() {
@@ -84,20 +100,21 @@ void handlePowerCut(uint32_t durationMs) {
   powerCutActive  = true;
   powerCutUntilMs = millis() + durationMs;
   setMosfet(false);
-  setLed(true); // GLOW RED: force LED ON during sabotage
+  setLed(true); // Force solid glow during power cut
   Serial.printf("[EMP] Power cut for %u ms\n", durationMs);
 }
 
 // ─── INCOMING UDP ────────────────────────────────────────────────────────────
 
 void handleIncoming(const char* msg, IPAddress remoteIp) {
-  Serial.printf("[RX] %s\n", msg);
+  lastServerPacketMs = millis();
 
   if (strcmp(msg, "ESPNet-Server-Online") == 0) {
-    if (!serverFound) {
+    if (!serverFound || serverIp != remoteIp) {
       serverFound = true;
       serverIp    = remoteIp;
-      Serial.printf("[net] Server @ %s\n", serverIp.toString().c_str());
+      Serial.printf("[net] Server confirmed @ %s\n", serverIp.toString().c_str());
+      lastHeartbeatMs = 0;
     }
     return;
   }
@@ -120,7 +137,7 @@ void handleIncoming(const char* msg, IPAddress remoteIp) {
       if (!powerCutActive) setLed(true); 
     }
     else if (strcmp(parts[2], "OFF") == 0) { 
-      empReadyState = false;
+      empReadyState = false; 
       if (!powerCutActive) setLed(false); 
     }
     else if (strcmp(parts[2], "BLINK") == 0) { 
@@ -141,6 +158,7 @@ void handleIncoming(const char* msg, IPAddress remoteIp) {
 
 void setup() {
   Serial.begin(115200);
+  delay(500);
 
   pinMode(MOSFET_PIN,  OUTPUT);
   pinMode(BUTTON1_PIN, INPUT_PULLUP);
@@ -151,10 +169,24 @@ void setup() {
   setLed(false);
 
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);              // Prevent WiFi modem sleep
+  WiFi.setAutoReconnect(true);       // Let the ESP-IDF stack auto-reconnect
+  WiFi.setHostname(WIFI_HOSTNAME);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("[wifi] Connecting");
-  while (WiFi.status() != WL_CONNECTED) { delay(300); Serial.print('.'); }
-  Serial.printf("\n[wifi] IP: %s\n", WiFi.localIP().toString().c_str());
+
+  Serial.printf("[wifi] Connecting to %s", WIFI_SSID);
+  uint32_t startAttempt = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - startAttempt < 15000)) {
+    delay(250);
+    Serial.print('.');
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    wasWifiConnected = true;
+    Serial.printf("\n[wifi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+  } else {
+    Serial.println("\n[wifi] Initial connection timed out, will retry in loop...");
+  }
 
   myMac = WiFi.macAddress();
   udp.begin(MY_UDP_PORT);
@@ -163,14 +195,43 @@ void setup() {
 
 void loop() {
   const uint32_t now = millis();
+  const bool isWifiConnected = (WiFi.status() == WL_CONNECTED);
 
-  if (WiFi.status() != WL_CONNECTED) {
-    setMosfet(true);
-    WiFi.reconnect();
-    delay(500);
+  // ── WiFi watchdog ──
+  if (!isWifiConnected) {
+    setMosfet(true); // Safety: enable MOSFET if network drops
+    if (wasWifiConnected) {
+      wasWifiConnected = false;
+      serverFound      = false;
+      lastDiscoveryMs  = 0;
+      lastHeartbeatMs  = 0;
+      Serial.println("[wifi] Connection lost — waiting for reconnect...");
+    }
+    if (now - lastWifiCheckMs >= 10000) {
+      lastWifiCheckMs = now;
+      WiFi.reconnect();
+    }
+    delay(10);
     return;
+  } else if (!wasWifiConnected) {
+    wasWifiConnected = true;
+    serverFound      = false;
+    lastDiscoveryMs  = 0;
+    lastHeartbeatMs  = 0;
+    lastServerPacketMs = now;
+    udp.stop();
+    udp.begin(MY_UDP_PORT);
+    Serial.printf("[wifi] Reconnected! IP: %s\n", WiFi.localIP().toString().c_str());
   }
 
+  // ── Server Liveness Watchdog ──
+  if (serverFound && (now - lastServerPacketMs >= SERVER_TIMEOUT_MS)) {
+    serverFound = false;
+    lastDiscoveryMs = 0;
+    Serial.println("[net] Server keepalive timed out — entering discovery mode");
+  }
+
+  // ── Discovery / Heartbeat ──
   if (!serverFound && (now - lastDiscoveryMs >= DISCOVERY_INTERVAL_MS)) {
     lastDiscoveryMs = now;
     sendDiscovery();
@@ -181,26 +242,24 @@ void loop() {
     sendHeartbeat();
   }
 
-  // MOSFET restore after power-cut
+  // ── MOSFET restore after power-cut ──
   if (powerCutActive && now >= powerCutUntilMs) {
     powerCutActive = false;
     setMosfet(true);
-    
-    // RESTORE LED: Revert to normal blink or static ready/unready state
     if (!ledBlinkMode) {
       setLed(empReadyState);
     }
     Serial.println("[EMP] Power restored");
   }
 
-  // LED blink
+  // ── LED blink ──
   if (ledBlinkMode && (now - lastBlinkMs >= BLINK_INTERVAL_MS)) {
     lastBlinkMs   = now;
     ledBlinkState = !ledBlinkState;
-    // Don't blink if we're currently sabotaged (prioritize solid red glow)
     if (!powerCutActive) setLed(ledBlinkState); 
   }
 
+  // ── Button 1: Kick Request ──
   bool btn1 = digitalRead(BUTTON1_PIN);
   if (btn1 == LOW && prevBtn1 == HIGH && (now - lastBtn1Ms >= BUTTON_DEBOUNCE_MS)) {
     lastBtn1Ms = now;
@@ -211,6 +270,7 @@ void loop() {
   }
   prevBtn1 = btn1;
 
+  // ── Button 2: EMP Request ──
   bool btn2 = digitalRead(BUTTON2_PIN);
   if (btn2 == LOW && prevBtn2 == HIGH && (now - lastBtn2Ms >= BUTTON_DEBOUNCE_MS)) {
     lastBtn2Ms = now;
@@ -222,13 +282,16 @@ void loop() {
   }
   prevBtn2 = btn2;
 
-  int pktSize = udp.parsePacket();
-  if (pktSize > 0) {
+  // ── Receive all pending UDP packets ──
+  int pktSize;
+  while ((pktSize = udp.parsePacket()) > 0) {
     char rxBuf[128];
-    int  len = udp.read(rxBuf, sizeof(rxBuf) - 1);
+    int len = udp.read(rxBuf, sizeof(rxBuf) - 1);
     if (len > 0) {
       rxBuf[len] = '\0';
       handleIncoming(rxBuf, udp.remoteIP());
     }
   }
+
+  delay(1);
 }

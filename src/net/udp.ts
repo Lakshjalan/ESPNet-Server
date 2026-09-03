@@ -79,6 +79,7 @@ export class UdpFleet {
       case "heartbeat": {
         const isNew = !this.registry.get(msg.mac);
         this.registry.upsertFromHeartbeat(msg);
+        console.log(`[udp] heartbeat from ${msg.mac} (${msg.ip}) team=${msg.team ?? "?"} batt=${msg.batteryPct ?? "?"}%`);
         if (isNew) this.sendTo(rinfo.address, encodeServerOnline());
 
         const dev = this.registry.get(msg.mac);
@@ -137,9 +138,16 @@ export class UdpFleet {
     const payload = Buffer.from(encodeServerOnline(), "utf-8");
     const targets = getBroadcastAddresses();
     for (const target of targets) {
-      this.socket.send(payload, config.espPort, target, (err) => {
-        if (err) console.error(`[udp] discovery broadcast to ${target} failed: ${err.message}`);
-      });
+      try {
+        this.socket.send(payload, config.espPort, target, (err) => {
+          // Ignore normal Windows unroutable broadcast interface errors (EHOSTUNREACH / ENETUNREACH)
+          if (err && err.message && !err.message.includes("EHOSTUNREACH") && !err.message.includes("ENETUNREACH") && !err.message.includes("EPERM")) {
+            console.error(`[udp] discovery broadcast to ${target} failed: ${err.message}`);
+          }
+        });
+      } catch (err) {
+        // Ignore synchronous send failures on inactive virtual interfaces
+      }
     }
   }
 
