@@ -19,8 +19,8 @@
 #include <ESP32Servo.h>
 
 // ─── CONFIG ─────────────────────────────────────────────────────────────────
-#define WIFI_SSID       "OpenWrt"
-#define WIFI_PASSWORD   "Tonu@4059$"
+#define WIFI_SSID       "LAKSH 6817"
+#define WIFI_PASSWORD   "5C37?8x3"
 #define WIFI_HOSTNAME   "robosoccer_blue_truck"
 
 #define MY_TEAM         "blue"
@@ -127,8 +127,17 @@ void handleIncoming(const char* msg, IPAddress remoteIp) {
   char* tok      = strtok(buf, "|");
   while (tok && n < 3) { parts[n++] = tok; tok = strtok(nullptr, "|"); }
 
-  if (n >= 2 && strcmp(parts[0], "CMD") == 0 && strcmp(parts[1], "KICK_FIRE") == 0) {
-    startKick();
+  if (n >= 2 && strcmp(parts[0], "CMD") == 0) {
+    if (strcmp(parts[1], "PING") == 0) {
+      char reply[64];
+      snprintf(reply, sizeof(reply), "EVENT|PING_ACK|%s", myMac.c_str());
+      sendUdp(reply);
+      Serial.println("[net] Responded to PING");
+      return;
+    }
+    if (strcmp(parts[1], "KICK_FIRE") == 0) {
+      startKick();
+    }
   }
 }
 

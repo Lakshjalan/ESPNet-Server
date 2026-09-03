@@ -13,7 +13,6 @@ function applyServerState(s) {
   if (Array.isArray(s.devices)) {
     latestDevices = s.devices;
     renderFleet(latestDevices);
-    renderPairing(latestDevices);
     refreshPowerupPills(latestDevices);
   }
   const m = s.match;
@@ -93,7 +92,6 @@ async function bootstrapFromBackend() {
       
       latestDevices = deviceList;
       renderFleet(latestDevices);
-      renderPairing(latestDevices);
       refreshPowerupPills(latestDevices);
       
     } catch (err) {

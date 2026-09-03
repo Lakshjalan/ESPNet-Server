@@ -36,15 +36,15 @@ export type InboundMessage =
     }
   | { kind: "kick_req"; mac: string }
   | { kind: "emp_req"; mac: string; targetTeam: Team }
+  | { kind: "ping_ack"; mac: string }
+  | { kind: "kick_ack"; mac: string }
+  | { kind: "emp_ack"; mac: string }
   | { kind: "unknown"; raw: string };
 
 /**
  * Parses the PRD §5.1 pipe-delimited UDP dictionary. Never throws — any
  * malformed/short/garbled packet becomes `{ kind: 'unknown' }` so a single
- * corrupt UDP datagram (packet loss/reordering, a half-booted ESP32 spraying
- * partial writes, etc.) can never take the listener loop down. The original
- * Rust server just indexed `parts[N]` after a length check per-branch; this
- * is the same idea but centralized and total.
+ * corrupt UDP datagram can never take the listener loop down.
  */
 export function parseInbound(raw: string): InboundMessage {
   const msg = raw.trim();
@@ -82,6 +82,24 @@ export function parseInbound(raw: string): InboundMessage {
     return { kind: "emp_req", mac: mac.data, targetTeam };
   }
 
+  if (parts[0] === "EVENT" && parts[1] === "PING_ACK") {
+    const mac = macSchema.safeParse(parts[2]);
+    if (!mac.success) return { kind: "unknown", raw };
+    return { kind: "ping_ack", mac: mac.data };
+  }
+
+  if (parts[0] === "EVENT" && parts[1] === "KICK_ACK") {
+    const mac = macSchema.safeParse(parts[2]);
+    if (!mac.success) return { kind: "unknown", raw };
+    return { kind: "kick_ack", mac: mac.data };
+  }
+
+  if (parts[0] === "EVENT" && parts[1] === "EMP_ACK") {
+    const mac = macSchema.safeParse(parts[2]);
+    if (!mac.success) return { kind: "unknown", raw };
+    return { kind: "emp_ack", mac: mac.data };
+  }
+
   return { kind: "unknown", raw };
 }
 
@@ -89,5 +107,6 @@ export const encodeServerOnline = (): string => "ESPNet-Server-Online";
 export const encodeKickFire = (): string => "CMD|KICK_FIRE";
 export const encodeMotorCut = (ms: number): string => `CMD|POWER_CUT|${ms}`;
 export const encodeSetLed = (state: "ON" | "OFF" | "BLINK"): string => `CMD|SET_LED|${state}`;
+export const encodePing = (): string => "CMD|PING";
 export const encodeLightFx = (pattern: string, rgbHex?: string): string =>
   rgbHex ? `CMD|LIGHT_FX|${pattern}|${rgbHex}` : `CMD|LIGHT_FX|${pattern}`;

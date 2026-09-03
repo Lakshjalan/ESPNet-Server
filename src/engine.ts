@@ -44,6 +44,11 @@ export class Engine {
     this.udp = new UdpFleet(this.registry, {
       onKickRequest: (mac) => this.handleKickRequest(mac),
       onEmpRequest: (mac, team) => this.handleEmpRequest(mac, team),
+      onPingAck: (mac, latencyMs) => {
+        if (this.ws) {
+          this.ws.broadcast({ type: "ping_ack", mac, latencyMs });
+        }
+      },
     });
     await this.udp.start();
 
@@ -70,7 +75,9 @@ export class Engine {
 
   handleKickRequest(controllerMac: string): void {
     const controller = this.registry.get(controllerMac);
-    const truck = controller?.pairedMac ? this.registry.get(controller.pairedMac) : undefined;
+    const truck = controller?.team
+      ? this.registry.list().find(d => d.nodeType === "truck" && d.team === controller.team)
+      : undefined;
     const settings = this.settings.get();
     const result = evaluateKick(controller, truck, Date.now(), settings.kickerEnabled);
 

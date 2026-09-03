@@ -80,7 +80,6 @@
     <nav class="nav flex gap-2 items-center h-full pt-1">
       <button class="nav-btn active font-headline font-semibold text-xs tracking-wider uppercase px-4 py-2 rounded-lg text-text-primary border-b-2 border-text-primary transition-colors" onclick="showScreen('live', this)">LIVE</button>
       <button class="nav-btn font-headline font-semibold text-xs tracking-wider uppercase px-4 py-2 rounded-lg text-text-secondary hover:text-text-primary transition-colors" onclick="showScreen('fleet', this)">FLEET</button>
-      <button class="nav-btn font-headline font-semibold text-xs tracking-wider uppercase px-4 py-2 rounded-lg text-text-secondary hover:text-text-primary transition-colors" onclick="showScreen('pairing', this)">PAIRING</button>
       <button class="nav-btn font-headline font-semibold text-xs tracking-wider uppercase px-4 py-2 rounded-lg text-text-secondary hover:text-text-primary transition-colors" onclick="showScreen('players', this)">PLAYERS</button>
       <button class="nav-btn font-headline font-semibold text-xs tracking-wider uppercase px-4 py-2 rounded-lg text-text-secondary hover:text-text-primary transition-colors" onclick="showScreen('history', this)">HISTORY</button>
       <button class="nav-btn font-headline font-semibold text-xs tracking-wider uppercase px-4 py-2 rounded-lg text-text-secondary hover:text-text-primary transition-colors" onclick="showScreen('settings', this)">SETTINGS</button>
@@ -261,37 +260,84 @@
         </div>
       </div>
 
-      <div class="bg-bg-panel border-hairline rounded-xl p-5">
+      <div class="bg-bg-panel border-hairline rounded-xl p-5 mb-6">
         <h3 class="font-headline font-bold text-xs text-text-secondary uppercase mb-3">Unassigned Hardware</h3>
         <div id="fleetUnassigned" class="space-y-2"><p class="text-text-secondary text-sm">Loading...</p></div>
       </div>
-    </div>
 
-    <!-- 3. PAIRING MATRIX & POWERUP TEST SCREEN -->
-    <div class="screen" id="screen-pairing">
-      <div class="grid grid-cols-12 gap-6">
-        <div class="col-span-12 lg:col-span-7 flex flex-col gap-6">
-          <div class="bg-bg-panel border-hairline rounded-xl p-6">
-            <h2 class="font-headline font-bold text-lg text-text-primary mb-2">Controller ↔ Truck Pairing Matrix</h2>
-            <p class="text-text-secondary text-sm mb-4">Link controllers directly to arena truck nodes.</p>
-            <div id="pairingList" class="space-y-3"><p class="text-text-secondary text-sm">Loading pairing layout...</p></div>
+      <!-- Signal Simulator & Diagnostic Testing Card -->
+      <div class="bg-bg-panel border border-status-warning/40 rounded-xl p-6 relative overflow-hidden">
+        <div class="absolute top-0 left-0 w-full h-1 bg-status-warning"></div>
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-status-warning">sensors</span>
+            <div>
+              <h2 class="font-headline font-bold text-lg text-text-primary">ESP Signal Simulator & Hardware Test</h2>
+              <p class="text-text-secondary text-xs">Test ESP ↔ Server ↔ ESP signal routing without pushing physical buttons.</p>
+            </div>
           </div>
+          <span class="text-[10px] font-mono px-2 py-1 bg-status-warning/20 text-status-warning rounded font-bold uppercase">Diagnostic Mode</span>
         </div>
 
-        <div class="col-span-12 lg:col-span-5 flex flex-col gap-6">
-          <div class="bg-bg-panel border border-status-warning/40 rounded-xl p-6 relative overflow-hidden">
-            <div class="absolute top-0 left-0 w-full h-1 bg-status-warning"></div>
-            <div class="flex items-center gap-2 mb-2">
-              <span class="material-symbols-outlined text-status-warning">warning</span>
-              <h2 class="font-headline font-bold text-lg text-status-warning">Powerup Test Mode</h2>
+        <div class="grid grid-cols-12 gap-6">
+          <!-- Left Column: Kicker & EMP Signal Simulation -->
+          <div class="col-span-12 lg:col-span-7 space-y-4">
+            <!-- Kicker Flow Test -->
+            <div class="p-4 bg-surface-container-low border border-border-subtle rounded-lg">
+              <h4 class="font-headline font-bold text-xs text-text-primary uppercase mb-2">⚡ Kicker Signal Flow (Controller → Server → Truck)</h4>
+              <p class="text-text-secondary text-xs mb-3">Tests if Controller signal reaches Server and Server triggers Truck Servo.</p>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="testSimulateKick('red')" class="px-3 py-2 bg-team-red/20 border border-team-red/50 text-team-red rounded-lg text-xs font-semibold hover:bg-team-red/30 transition-colors text-left">
+                  ▶ Sim Red Button (KICK_REQ)
+                </button>
+                <button onclick="testSimulateKick('blue')" class="px-3 py-2 bg-team-blue/20 border border-team-blue/50 text-team-blue rounded-lg text-xs font-semibold hover:bg-team-blue/30 transition-colors text-left">
+                  ▶ Sim Blue Button (KICK_REQ)
+                </button>
+                <button onclick="testDirectKick('red')" class="px-3 py-2 border border-border-subtle text-text-secondary rounded-lg text-xs hover:bg-surface-container transition-colors text-left">
+                  🎯 Force Kick Red Truck
+                </button>
+                <button onclick="testDirectKick('blue')" class="px-3 py-2 border border-border-subtle text-text-secondary rounded-lg text-xs hover:bg-surface-container transition-colors text-left">
+                  🎯 Force Kick Blue Truck
+                </button>
+              </div>
             </div>
-            <p class="text-text-secondary text-xs mb-4">Bypasses game eligibility checks for diagnostic hardware testing.</p>
 
-            <div class="grid grid-cols-2 gap-3 mb-4">
-              <button class="h-11 border border-team-red/50 text-team-red rounded-lg font-headline font-semibold text-xs uppercase hover:bg-team-red/10 transition-colors" onclick="refTriggerKick('red')">Test Kick (Red)</button>
-              <button class="h-11 border border-team-blue/50 text-team-blue rounded-lg font-headline font-semibold text-xs uppercase hover:bg-team-blue/10 transition-colors" onclick="refTriggerKick('blue')">Test Kick (Blue)</button>
-              <button class="h-11 border border-team-red/50 text-team-red rounded-lg font-headline font-semibold text-xs uppercase hover:bg-team-red/10 transition-colors" onclick="refTriggerEmp('red')">Test EMP (Red → Blue)</button>
-              <button class="h-11 border border-team-blue/50 text-team-blue rounded-lg font-headline font-semibold text-xs uppercase hover:bg-team-blue/10 transition-colors" onclick="refTriggerEmp('blue')">Test EMP (Blue → Red)</button>
+            <!-- EMP Flow Test -->
+            <div class="p-4 bg-surface-container-low border border-border-subtle rounded-lg">
+              <h4 class="font-headline font-bold text-xs text-text-primary uppercase mb-2">💥 EMP Sabotage Flow (Controller → Server → Opponent Controller)</h4>
+              <p class="text-text-secondary text-xs mb-3">Tests if Controller signal reaches Server and Server cuts Opponent Controller power.</p>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="testSimulateEmp('red')" class="px-3 py-2 bg-team-red/20 border border-team-red/50 text-team-red rounded-lg text-xs font-semibold hover:bg-team-red/30 transition-colors text-left">
+                  ▶ Sim Red EMP (Target Blue)
+                </button>
+                <button onclick="testSimulateEmp('blue')" class="px-3 py-2 bg-team-blue/20 border border-team-blue/50 text-team-blue rounded-lg text-xs font-semibold hover:bg-team-blue/30 transition-colors text-left">
+                  ▶ Sim Blue EMP (Target Red)
+                </button>
+                <button onclick="testDirectEmp('red')" class="px-3 py-2 border border-border-subtle text-text-secondary rounded-lg text-xs hover:bg-surface-container transition-colors text-left">
+                  ⚡ Force Cut Blue Controller
+                </button>
+                <button onclick="testDirectEmp('blue')" class="px-3 py-2 border border-border-subtle text-text-secondary rounded-lg text-xs hover:bg-surface-container transition-colors text-left">
+                  ⚡ Force Cut Red Controller
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Ping Test & Output Console -->
+          <div class="col-span-12 lg:col-span-5 flex flex-col gap-4">
+            <div class="p-4 bg-surface-container-low border border-border-subtle rounded-lg flex-1 flex flex-col">
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="font-headline font-bold text-xs text-text-primary uppercase">📶 Signal Round-Trip Ping</h4>
+                <button onclick="pingAllDevices()" class="px-2 py-1 bg-text-primary text-background rounded text-[10px] font-bold uppercase hover:opacity-90">Ping All ESPs</button>
+              </div>
+              <div id="pingList" class="space-y-1 my-2 text-xs font-mono">
+                <p class="text-text-secondary">Click Ping All to test connection latency.</p>
+              </div>
+            </div>
+
+            <!-- Signal Console Output -->
+            <div class="p-3 bg-background border border-border-subtle rounded-lg font-mono text-[11px] h-28 overflow-y-auto" id="testConsole">
+              <span class="text-text-secondary">[Ready] Signal test console initialized.</span>
             </div>
           </div>
         </div>

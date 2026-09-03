@@ -13,8 +13,8 @@ type Listener = () => void;
  *  - A heartbeat only ever *seeds* nodeType/team when they're still unset.
  *    It never overwrites a value the referee assigned via REST, even though
  *    the wire format lets the device report both on every packet.
- *  - powerup/cooldown/pairing state lives here only, never trusted from the
- *    device, so a device's own memory loss on reboot is a non-event.
+ *  - powerup/cooldown state lives here only, never trusted from the device,
+ *    so a device's own memory loss on reboot is a non-event.
  */
 export class DeviceRegistry {
   private devices = new Map<string, DeviceNode>();
@@ -90,7 +90,6 @@ export class DeviceRegistry {
         ip: input.ip,
         nodeType: input.nodeType,
         team: input.team,
-        pairedMac: null,
         isOnline: true,
         lastSeen: now,
         firstSeen: now,
@@ -145,34 +144,9 @@ export class DeviceRegistry {
     return true;
   }
 
-  /** Pair a controller MAC with a truck MAC (bidirectional link). */
-  pair(controllerMac: string, truckMac: string): boolean {
-    const controller = this.devices.get(controllerMac);
-    const truck = this.devices.get(truckMac);
-    if (!controller || !truck) return false;
-    controller.pairedMac = truckMac;
-    truck.pairedMac = controllerMac;
-    this.notify();
-    return true;
-  }
-
-  unpair(mac: string): boolean {
-    const dev = this.devices.get(mac);
-    if (!dev || !dev.pairedMac) return false;
-    const other = this.devices.get(dev.pairedMac);
-    if (other) other.pairedMac = null;
-    dev.pairedMac = null;
-    this.notify();
-    return true;
-  }
-
   remove(mac: string): boolean {
     const dev = this.devices.get(mac);
     if (!dev) return false;
-    if (dev.pairedMac) {
-      const other = this.devices.get(dev.pairedMac);
-      if (other) other.pairedMac = null;
-    }
     this.devices.delete(mac);
     this.notify();
     return true;

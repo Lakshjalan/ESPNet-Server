@@ -119,15 +119,6 @@ function removeDevice(mac) {
   api.deleteDevice(mac).then(bootstrapFromBackend).catch(err => alert("Delete device failed: " + err.message));
 }
 
-function pairControllerToTruck(controllerMac, selectId) {
-  const truckSel = document.getElementById(selectId);
-  if (!truckSel || !truckSel.value) return;
-  api.pairDevices(controllerMac, truckSel.value).then(bootstrapFromBackend).catch(err => alert("Pairing failed: " + err.message));
-}
-
-function unpairController(mac) {
-  api.unpairDevice(mac).then(bootstrapFromBackend).catch(err => alert("Unpairing failed: " + err.message));
-}
 
 function renderFleet(devices) {
   const controllersEl = document.getElementById('fleetControllers');
@@ -189,62 +180,12 @@ function renderFleet(devices) {
   if (connDevices) connDevices.textContent = `${onlineCount}/${devices.length} devices online`;
 }
 
-function renderPairing(devices) {
-  const el = document.getElementById('pairingList');
-  if (!el) return;
-  const controllers = devices.filter(d => d.nodeType === 'controller');
-  const trucks = devices.filter(d => d.nodeType === 'truck');
-
-  if (!controllers.length) {
-    el.innerHTML = emptyState('No controllers connected to pair.');
-    return;
-  }
-
-  el.innerHTML = controllers.map((c, idx) => {
-    const pairedTruck = c.pairedMac ? devices.find(d => d.mac === c.pairedMac) : null;
-    const cName = c.label || (c.team ? c.team.toUpperCase() + ' · ' : '') + shortMac(c.mac);
-    const selectId = `truckSelect_${idx}`;
-
-    let rightSide = '';
-    if (pairedTruck) {
-      const tName = pairedTruck.label || (pairedTruck.team ? pairedTruck.team.toUpperCase() + ' · ' : '') + shortMac(pairedTruck.mac);
-      rightSide = `
-        <div class="flex items-center gap-3">
-          <span class="font-mono text-sm font-semibold text-text-primary">${tName}</span>
-          <button onclick="unpairController('${c.mac}')" class="px-3 py-1 border border-status-error/40 text-status-error hover:bg-status-error/10 text-xs rounded font-semibold transition-colors">Unpair</button>
-        </div>
-      `;
-    } else {
-      const availableTrucks = trucks.filter(t => !t.pairedMac || t.pairedMac === c.mac);
-      rightSide = `
-        <div class="flex items-center gap-2">
-          <select id="${selectId}" class="bg-surface-container border border-border-subtle text-xs text-text-primary rounded px-2 py-1 focus:outline-none">
-            <option value="">Select Truck...</option>
-            ${availableTrucks.map(t => `<option value="${t.mac}">${t.label || t.mac}</option>`).join('')}
-          </select>
-          <button onclick="pairControllerToTruck('${c.mac}', '${selectId}')" class="px-3 py-1 bg-text-primary text-background text-xs font-headline font-bold rounded hover:opacity-90 transition-opacity">Pair</button>
-        </div>
-      `;
-    }
-
-    return `
-      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-surface-container-low border border-border-subtle rounded-xl gap-2">
-        <div class="flex items-center gap-3">
-          <span class="font-mono text-sm font-semibold text-text-primary">${cName}</span>
-          <span class="text-xs text-text-secondary font-mono">${c.mac}</span>
-        </div>
-        <span class="material-symbols-outlined text-text-secondary hidden sm:inline">arrow_forward</span>
-        ${rightSide}
-      </div>
-    `;
-  }).join('');
-}
 
 function refreshPowerupPills(devices) {
   const now = Date.now();
   ['red', 'blue'].forEach(side => {
     const controller = devices.find(d => d.nodeType === 'controller' && d.team === side);
-    const truck = controller?.pairedMac ? devices.find(d => d.mac === controller.pairedMac) : null;
+    const truck = devices.find(d => d.nodeType === 'truck' && d.team === side);
 
     // Fleet card: controller dot + battery
     const ctrlDot  = document.getElementById(side + 'ControllerDot');
@@ -365,3 +306,94 @@ function renderQueue() {
     `;
   }).join('');
 }
+
+// -----------------------------------------------------------------------------
+// Signal Testing & Diagnostics Helpers
+// -----------------------------------------------------------------------------
+
+function logTestConsole(msg, isError = false) {
+  const consoleEl = document.getElementById('testConsole');
+  if (!consoleEl) return;
+  const time = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.className = isError ? 'text-status-error' : 'text-status-ready';
+  line.textContent = `[${time}] ${msg}`;
+  consoleEl.prepend(line);
+}
+
+function testSimulateKick(side) {
+  const controller = latestDevices.find(d => d.nodeType === 'controller' && d.team === side);
+  if (!controller) {
+    logTestConsole(`Failed: No ${side} controller registered in fleet!`, true);
+    return;
+  }
+  logTestConsole(`Simulating ${side.toUpperCase()} controller button press (KICK_REQ)...`);
+  api.simKick(controller.mac)
+    .then(res => logTestConsole(`✓ ${res.message}`))
+    .catch(err => logTestConsole(`❌ ${err.message}`, true));
+}
+
+function testSimulateEmp(side) {
+  const controller = latestDevices.find(d => d.nodeType === 'controller' && d.team === side);
+  if (!controller) {
+    logTestConsole(`Failed: No ${side} controller registered in fleet!`, true);
+    return;
+  }
+  logTestConsole(`Simulating ${side.toUpperCase()} controller button press (EMP_REQ)...`);
+  api.simEmp(controller.mac)
+    .then(res => logTestConsole(`✓ ${res.message}`))
+    .catch(err => logTestConsole(`❌ ${err.message}`, true));
+}
+
+function testDirectKick(team) {
+  logTestConsole(`Sending direct KICK_FIRE to ${team.toUpperCase()} truck...`);
+  api.testKick(team)
+    .then(res => logTestConsole(`✓ ${res.message}`))
+    .catch(err => logTestConsole(`❌ ${err.message}`, true));
+}
+
+function testDirectEmp(attackerTeam) {
+  const targetTeam = attackerTeam === 'red' ? 'blue' : 'red';
+  logTestConsole(`Sending direct POWER_CUT to ${targetTeam.toUpperCase()} controller...`);
+  api.testEmp(attackerTeam)
+    .then(res => logTestConsole(`✓ ${res.message}`))
+    .catch(err => logTestConsole(`❌ ${err.message}`, true));
+}
+
+function pingDevice(mac) {
+  logTestConsole(`Pinging ESP [${mac}]...`);
+  api.pingDevice(mac).catch(err => logTestConsole(`❌ Ping failed for ${mac}: ${err.message}`, true));
+}
+
+function pingAllDevices() {
+  const online = latestDevices.filter(d => d.isOnline);
+  if (!online.length) {
+    logTestConsole("No devices currently online to ping.", true);
+    return;
+  }
+  logTestConsole(`Pinging all ${online.length} online ESP devices...`);
+  online.forEach(dev => pingDevice(dev.mac));
+}
+
+// Listen for WebSocket ping_ack events
+bus.on('ping_ack', (payload) => {
+  const dev = latestDevices.find(d => d.mac === payload.mac);
+  const name = dev?.label || (dev?.team ? dev.team.toUpperCase() + ' ' + dev.nodeType : dev?.mac);
+  logTestConsole(`📶 PING ACK from ${name}: ${payload.latencyMs} ms latency`);
+
+  const pingList = document.getElementById('pingList');
+  if (pingList) {
+    let item = document.getElementById(`pingItem_${payload.mac}`);
+    if (!item) {
+      item = document.createElement('div');
+      item.id = `pingItem_${payload.mac}`;
+      item.className = 'flex justify-between items-center py-1 border-b border-border-subtle/50';
+      pingList.appendChild(item);
+    }
+    item.innerHTML = `
+      <span>${name}</span>
+      <span class="text-status-ready font-semibold">${payload.latencyMs} ms</span>
+    `;
+  }
+});
+

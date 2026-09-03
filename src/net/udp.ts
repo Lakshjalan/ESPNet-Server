@@ -28,6 +28,9 @@ function getBroadcastAddresses(): string[] {
 export interface UdpFleetHandlers {
   onKickRequest(mac: string): void;
   onEmpRequest(mac: string, targetTeam: Team): void;
+  onPingAck?(mac: string, latencyMs: number): void;
+  onKickAck?(mac: string): void;
+  onEmpAck?(mac: string): void;
 }
 
 /**
@@ -43,6 +46,7 @@ export class UdpFleet {
   private socket: dgram.Socket;
   private discoveryTimer: NodeJS.Timeout | null = null;
   private lastUnknownWarn = new Map<string, number>();
+  private pingTimes = new Map<string, number>();
 
   constructor(
     private readonly registry: DeviceRegistry,
@@ -105,6 +109,24 @@ export class UdpFleet {
       case "emp_req":
         this.handlers.onEmpRequest(msg.mac, msg.targetTeam);
         break;
+      case "ping_ack": {
+        const sent = this.pingTimes.get(msg.mac);
+        const latencyMs = sent ? Date.now() - sent : 0;
+        this.pingTimes.delete(msg.mac);
+        console.log(`[udp] PING_ACK from ${msg.mac} (${latencyMs}ms)`);
+        if (this.handlers.onPingAck) {
+          this.handlers.onPingAck(msg.mac, latencyMs);
+        }
+        break;
+      }
+      case "kick_ack":
+        console.log(`[udp] KICK_ACK from ${msg.mac}`);
+        if (this.handlers.onKickAck) this.handlers.onKickAck(msg.mac);
+        break;
+      case "emp_ack":
+        console.log(`[udp] EMP_ACK from ${msg.mac}`);
+        if (this.handlers.onEmpAck) this.handlers.onEmpAck(msg.mac);
+        break;
       case "unknown": {
         const now = Date.now();
         const last = this.lastUnknownWarn.get(rinfo.address) ?? 0;
@@ -115,6 +137,15 @@ export class UdpFleet {
         break;
       }
     }
+  }
+
+  /** Send CMD|PING to a device by MAC and record sent time. */
+  sendPing(mac: string): boolean {
+    const dev = this.registry.get(mac);
+    if (!dev || !dev.isOnline) return false;
+    this.pingTimes.set(mac, Date.now());
+    this.sendTo(dev.ip, "CMD|PING");
+    return true;
   }
 
   /** Send CMD|SET_LED to a controller when its EMP-ready status changes. */

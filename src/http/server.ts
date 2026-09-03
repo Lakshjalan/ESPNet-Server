@@ -8,10 +8,10 @@ import type { Engine } from "../engine.js";
 import { devicesRouter } from "./routes/devices.js";
 import { matchRouter } from "./routes/match.js";
 import { powerupsRouter } from "./routes/powerups.js";
-import { pairingRouter } from "./routes/pairing.js";
 import { playersRouter } from "./routes/players.js";
 import { settingsRouter } from "./routes/settings.js";
 import { queueRouter } from "./routes/queue.js";
+import { testRouter } from "./routes/test.js";
 
 const __dirname = path.dirname(
   fileURLToPath(import.meta.url),
@@ -67,11 +67,6 @@ export function createHttpServer(
   );
 
   app.use(
-    "/api/pairing",
-    pairingRouter(engine),
-  );
-
-  app.use(
     "/api/match",
     matchRouter(engine),
   );
@@ -96,6 +91,12 @@ export function createHttpServer(
   app.use(
     "/api/queue",
     queueRouter(engine),
+  );
+
+  // Hardware Signal Testing
+  app.use(
+    "/api/test",
+    testRouter(engine),
   );
 
   // -------------------------------------------------------------------------

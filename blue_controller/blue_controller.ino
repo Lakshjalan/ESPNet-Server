@@ -184,6 +184,14 @@ void handleIncoming(const char* msg, IPAddress remoteIp) {
 
   if (n < 2 || strcmp(parts[0], "CMD") != 0) return;
 
+  if (strcmp(parts[1], "PING") == 0) {
+    char reply[64];
+    snprintf(reply, sizeof(reply), "EVENT|PING_ACK|%s", myMac.c_str());
+    sendUdp(reply);
+    Serial.println("[net] Responded to PING");
+    return;
+  }
+
   if (strcmp(parts[1], "SET_LED") == 0 && n >= 3) {
     ledBlinkMode = false;
     if (strcmp(parts[2], "ON") == 0) {

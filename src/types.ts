@@ -11,13 +11,11 @@ export interface DeviceNode {
   ip: string;
   nodeType: NodeType | null;
   team: Team | null;
-  /** Controller <-> Truck pairing. Only meaningful for nodeType === 'controller' | 'truck'. */
-  pairedMac: string | null;
   isOnline: boolean;
   lastSeen: number; // epoch ms
   firstSeen: number; // epoch ms
   batteryPct: number | null;
-  /** Referee-friendly label, e.g. "Controller 1 (Red)". Independent of team/pairing. */
+  /** Referee-friendly label, e.g. "Controller 1 (Red)". Independent of team. */
   label: string | null;
   /** Cooldown expiry for the kicker power-up; null = never fired / cooldown elapsed. */
   kickerCooldownUntil: number | null;
@@ -91,6 +89,9 @@ export type ServerEvent =
   | { type: "audio_event"; event: AudioEvent }
   | { type: "light_event"; pattern: LightPattern; rgbHex?: string }
   | { type: "powerup_rejected"; action: "kick" | "emp"; mac: string; reason: string }
+  | { type: "ping_ack"; mac: string; latencyMs: number }
+  | { type: "kick_ack"; mac: string }
+  | { type: "emp_ack"; mac: string }
   | { type: "history"; entries: MatchHistoryEntry[] };
 
 

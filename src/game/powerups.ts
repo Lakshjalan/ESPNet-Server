@@ -4,7 +4,7 @@ import type { DeviceNode } from "../types.js";
 // Kept dependency-free (no socket, no registry) so they're trivially unit
 // testable. The stateful wrapper below is the only part that touches I/O.
 
-export type KickRejectReason = "unknown_controller" | "cooldown" | "not_paired" | "target_offline" | "disabled";
+export type KickRejectReason = "unknown_controller" | "cooldown" | "no_truck" | "target_offline" | "disabled";
 export type KickResult = { ok: true; truckMac: string } | { ok: false; reason: KickRejectReason };
 
 export function evaluateKick(
@@ -18,7 +18,7 @@ export function evaluateKick(
   if (controller.kickerCooldownUntil !== null && now < controller.kickerCooldownUntil) {
     return { ok: false, reason: "cooldown" };
   }
-  if (!controller.pairedMac || !truck) return { ok: false, reason: "not_paired" };
+  if (!truck) return { ok: false, reason: "no_truck" };
   if (!truck.isOnline) return { ok: false, reason: "target_offline" };
   return { ok: true, truckMac: truck.mac };
 }
